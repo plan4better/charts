@@ -1,0 +1,33 @@
+suite: core ConfigMap
+templates:
+  - core/configmap.yaml
+tests:
+  - it: renders when core.enabled and emits config keys
+    set:
+      core.enabled: true
+      core.config.ENVIRONMENT: "test"
+      core.config.JOB_TIMEOUT_DEFAULT: "999"
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-goat-core
+      - equal:
+          path: data.ENVIRONMENT
+          value: "test"
+      - equal:
+          path: data.JOB_TIMEOUT_DEFAULT
+          value: "999"
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: core
+
+  - it: not rendered when core disabled
+    set:
+      core.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

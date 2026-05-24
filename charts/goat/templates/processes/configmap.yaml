@@ -1,0 +1,16 @@
+{{- if .Values.processes.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "goat.serviceFullname" (dict "context" . "component" "processes") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "processes") | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.processes.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  POSTGRES_SERVER: {{ include "goat.postgresql.host" $ | quote }}
+  POSTGRES_DB: {{ include "goat.postgresql.database" $ | quote }}
+  POSTGRES_PORT: {{ include "goat.postgresql.port" $ | quote }}
+{{- end }}

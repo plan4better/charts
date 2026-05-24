@@ -1,0 +1,31 @@
+{{- if .Values.postgresql.cluster.enabled -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "goat.fullname" . }}-pg
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "postgresql") | nindent 4 }}
+spec:
+  instances: {{ .Values.postgresql.cluster.instances }}
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: {{ .Values.postgresql.cluster.storage.size }}
+    {{- with (default .Values.global.storageClass .Values.postgresql.cluster.storage.storageClass) }}
+    storageClass: {{ . }}
+    {{- end }}
+  bootstrap:
+    initdb:
+      database: {{ include "goat.postgresql.database" . | quote }}
+      owner: goat
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS postgis
+        - CREATE EXTENSION IF NOT EXISTS postgis_topology
+        - CREATE EXTENSION IF NOT EXISTS pgrouting
+  {{- with .Values.postgresql.cluster.backup }}
+  {{- if .enabled }}
+  backup:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+{{- end }}

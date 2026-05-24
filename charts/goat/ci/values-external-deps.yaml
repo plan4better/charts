@@ -1,0 +1,32 @@
+# CI fixture: external dependencies profile.
+# - Postgres provisioned outside the chart (consumer-provided Service + Secret)
+# - Bundled Redis (light dep; consumers can override or disable as needed)
+# - Ingress disabled (assumes an API gateway or external Ingress fronts the API)
+
+global:
+  storageClass: local-path
+  imagePullSecrets: []
+
+core:
+  enabled: true
+  ingress:
+    enabled: false
+  auth:
+    enabled: false
+
+postgresql:
+  operator:
+    enabled: false
+  cluster:
+    enabled: false
+  external:
+    host: "postgres.example.com"
+    port: 5432
+    database: goat
+    existingSecret: "external-postgres-creds"
+    existingSecretUserKey: username
+    existingSecretPasswordKey: password
+    sslMode: prefer
+
+redis:
+  enabled: true

@@ -1,0 +1,80 @@
+# /home/p4b/charts/.github/workflows/ci.yml
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - 'charts/**'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**'
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-template:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each chart in charts/<name>/ gets its own matrix entry. Add more as
+        # charts are added to this repo.
+        chart: [goat]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.4
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL -o /tmp/kubeconform.tgz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+          sudo tar -xz -C /usr/local/bin -f /tmp/kubeconform.tgz kubeconform
+
+      - name: helm dependency update
+        run: helm dependency update charts/${{ matrix.chart }}/
+
+      - name: helm lint
+        run: helm lint --strict charts/${{ matrix.chart }}/
+
+      - name: helm unittest
+        run: helm unittest charts/${{ matrix.chart }}/
+
+      - name: Render each fixture under charts/<chart>/ci/
+        run: |
+          set -e
+          for f in charts/${{ matrix.chart }}/ci/*.yaml; do
+            name=$(basename "$f" .yaml)
+            echo "::group::Render $name"
+            helm template ci-render charts/${{ matrix.chart }}/ -f "$f" > /tmp/$name.yaml
+            wc -l /tmp/$name.yaml
+            echo "::endgroup::"
+          done
+
+      # Skip `CustomResourceDefinition` validation: sub-charts ship their own
+      # CRDs (e.g. cnpg) and kubeconform doesn't have schemas for them. We
+      # rely on the sub-chart's pinned version (Chart.lock) for CRD
+      # correctness; we still validate every Custom Resource INSTANCE
+      # (e.g. `Cluster`) via the datreeio catalog schema-location URL.
+      - name: kubeconform each fixture
+        run: |
+          set -e
+          for f in /tmp/*.yaml; do
+            name=$(basename "$f" .yaml)
+            echo "::group::kubeconform $name"
+            kubeconform -strict -kubernetes-version 1.30.0 \
+              -skip CustomResourceDefinition \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+              -summary "$f"
+            echo "::endgroup::"
+          done

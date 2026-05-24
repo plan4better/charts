@@ -1,0 +1,84 @@
+suite: core Deployment
+templates:
+  - core/deployment.yaml
+  - core/configmap.yaml          # needed so envFrom refs validate
+tests:
+  - it: renders Deployment with default image and probes (Phase 1)
+    set:
+      core.enabled: true
+      postgresql.cluster.enabled: false
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    template: core/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-goat-core
+      - equal:
+          path: spec.replicas
+          value: 1
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "^ghcr\\.io/plan4better/goat/core:.+"
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8000
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /api/healthz
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /api/healthz
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: RELEASE-NAME-goat-core
+
+  - it: honors global.imageRegistry mirror
+    set:
+      core.enabled: true
+      global.imageRegistry: "harbor.internal"
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    template: core/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "^harbor\\.internal/plan4better/goat/core:.+"
+
+  - it: applies replicaCount override
+    set:
+      core.enabled: true
+      core.replicaCount: 3
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    template: core/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: not rendered when core.enabled false
+    set:
+      core.enabled: false
+    template: core/deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: applies imagePullSecrets from global
+    set:
+      core.enabled: true
+      global.imagePullSecrets:
+        - name: my-pull-secret
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    template: core/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: my-pull-secret

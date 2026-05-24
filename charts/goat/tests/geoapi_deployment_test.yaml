@@ -1,0 +1,33 @@
+suite: geoapi Deployment
+templates:
+  - geoapi/deployment.yaml
+  - geoapi/configmap.yaml
+tests:
+  - it: renders Deployment with default image
+    set:
+      geoapi.enabled: true
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    template: geoapi/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-goat-geoapi
+      - equal:
+          path: spec.replicas
+          value: 1
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "^ghcr\\.io/plan4better/goat/geoapi:.+"
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8000
+  - it: not rendered when geoapi.enabled false
+    set:
+      geoapi.enabled: false
+    template: geoapi/deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

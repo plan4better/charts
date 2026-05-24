@@ -1,0 +1,413 @@
+# /home/p4b/goat/charts/goat/values.yaml
+#
+# v0.1.0 ships templates for: core, web, geoapi, accounts, processes.
+# Defaults: core+web enabled; geoapi/accounts/processes opt-in (see comments
+# above each block for why). routing/windmill/caddy excluded — see
+# docs/superpowers/specs/2026-05-23-goat-helm-chart-design.md §3 D10/D10b.
+
+# ─── Global ────────────────────────────────────────────────────────────────
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  imageRegistry: ""                # override for airgap mirrors (e.g. "harbor.internal")
+  imagePullSecrets: []             # e.g. [{name: ghcr-pull-secret}]
+  commonLabels: {}
+  storageClass: ""                 # default StorageClass for all PVCs ("" = cluster default)
+  # Required by bitnami sub-charts when using bitnamilegacy images (post-Aug 2025).
+  # If you bring your own redis/keycloak/etc images from non-bitnami registries,
+  # you can keep this true; it only relaxes the sub-chart's own image-check.
+  security:
+    allowInsecureImages: true
+
+# ─── Core service ──────────────────────────────────────────────────────────
+core:
+  enabled: true                    # default ON per spec D11 (chart-level maximal)
+  replicaCount: 1
+  image:
+    registry: ghcr.io
+    repository: plan4better/goat/core
+    tag: ""                        # "" = use .Chart.AppVersion
+    pullPolicy: IfNotPresent
+
+  # Static, non-secret env vars (rendered into a ConfigMap in Task 6)
+  config:
+    ENVIRONMENT: prod
+    REGION_MAPPING_PT_TABLE: "basic.region_mapping_pt_04022025"
+    JOB_TIMEOUT_DEFAULT: "500"
+    CRUD_NUM_RETRIES: "40"
+    CRUD_RETRY_INTERVAL: "3"
+    # The GOAT core image initializes boto3 + several feature clients at boot
+    # and crashes if these are missing. Placeholders here let the pod start;
+    # override with real values for any features you actually use.
+    AWS_REGION: "us-east-1"
+    AWS_S3_ASSETS_BUCKET: "placeholder"
+    ASSETS_URL: "https://example.com/assets"
+    MAPBOX_TOKEN: "placeholder"
+    KEYCLOAK_SERVER_URL: "http://placeholder-keycloak"
+    GOAT_ROUTING_HOST: "http://placeholder-routing"
+    GOAT_GEOAPI_HOST: "http://placeholder-geoapi"
+    R5_HOST: "http://placeholder-r5"
+    R5_AUTHORIZATION: "placeholder"
+    GOAT_ROUTING_AUTHORIZATION: "placeholder"
+    S3_PROVIDER: "minio"
+    S3_ENDPOINT_URL: "http://placeholder-s3"
+    S3_REGION: "us-east-1"
+    S3_BUCKET_NAME: "goat-placeholder"
+
+  # Arbitrary extra env (k:v list, passthrough). Default placeholders satisfy
+  # boto3's "both key and secret required" check so the pod can start; replace
+  # with real S3/AWS credentials (ideally via valueFrom: secretKeyRef) for
+  # actual S3 use.
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      value: "placeholder-aws-key"
+    - name: AWS_SECRET_ACCESS_KEY
+      value: "placeholder-aws-secret"
+    - name: S3_ACCESS_KEY_ID
+      value: "placeholder-s3-key"
+    - name: S3_SECRET_ACCESS_KEY
+      value: "placeholder-s3-secret"
+
+  # Per-feature toggles
+  auth:
+    enabled: false                 # Phase 1: AUTH=false (no Keycloak required); flips on in Phase 2
+
+  resources: {}                    # request/limit; empty = no enforcement
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+    annotations: {}
+
+  ingress:
+    enabled: false                 # consumers turn on as needed
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /api/healthz
+      port: http
+    initialDelaySeconds: 20
+    timeoutSeconds: 60
+    periodSeconds: 120
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /api/healthz
+      port: http
+    initialDelaySeconds: 10
+    timeoutSeconds: 60
+    periodSeconds: 120
+    failureThreshold: 3
+    successThreshold: 1
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+# ─── Web (Next.js frontend) ────────────────────────────────────────────────
+web:
+  enabled: true
+  replicaCount: 1
+  image:
+    registry: ghcr.io
+    repository: plan4better/goat/web
+    tag: ""                        # "" = .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  config:
+    HOSTNAME: "0.0.0.0"
+    # NextAuth env vars — needed even when auth disabled (Next.js validates presence)
+    NEXTAUTH_URL: "http://localhost:3000"
+    NEXTAUTH_SECRET: "placeholder-nextauth-secret"
+    KEYCLOAK_ISSUER: "http://placeholder-keycloak/realms/placeholder"
+    KEYCLOAK_CLIENT_ID: "goat-web"
+    KEYCLOAK_CLIENT_SECRET: "placeholder"
+    NEXT_PUBLIC_AUTH_DISABLED: "true"
+  extraEnv: []
+  auth:
+    enabled: false
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+    annotations: {}
+  ingress:
+    enabled: false                 # set true AND populate hosts/tls below to expose externally
+    className: ""
+    annotations: {}
+    hosts: []                      # e.g. [{host: goat.example.com, paths: [{path: /, pathType: Prefix}]}]
+    tls: []
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  livenessProbe:
+    enabled: false                 # Next.js doesn't ship a health endpoint by default
+  readinessProbe:
+    enabled: false
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+# ─── GeoAPI (geospatial API) ───────────────────────────────────────────────
+# Disabled by default: geoapi requires DuckLake metadata bootstrapped in the
+# postgres database before first start. Set `geoapi.config.DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"`
+# and `geoapi.enabled: true` to enable.
+geoapi:
+  enabled: false
+  replicaCount: 1
+  image:
+    registry: ghcr.io
+    repository: plan4better/goat/geoapi
+    tag: ""
+    pullPolicy: IfNotPresent
+  config:
+    ENVIRONMENT: prod
+    # Required for first-time DuckLake bootstrap. Set false in production
+    # after the lake exists to enforce schema-stability.
+    DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"
+    # Same boot-safe placeholders as core (boto3 PartialCredentialsError otherwise)
+    AWS_REGION: "us-east-1"
+    AWS_S3_ASSETS_BUCKET: "placeholder"
+    MAPBOX_TOKEN: "placeholder"
+    S3_PROVIDER: "minio"
+    S3_ENDPOINT_URL: "http://placeholder-s3"
+    S3_REGION: "us-east-1"
+    S3_BUCKET_NAME: "goat-placeholder"
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      value: "placeholder-aws-key"
+    - name: AWS_SECRET_ACCESS_KEY
+      value: "placeholder-aws-secret"
+    - name: S3_ACCESS_KEY_ID
+      value: "placeholder-s3-key"
+    - name: S3_SECRET_ACCESS_KEY
+      value: "placeholder-s3-secret"
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  livenessProbe:
+    enabled: false
+  readinessProbe:
+    enabled: false
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+# ─── Accounts (user management) ────────────────────────────────────────────
+# Disabled by default: the image `ghcr.io/plan4better/goat-accounts` is private
+# (anonymous GHCR pull returns 401). To enable, provide pull credentials via
+# `global.imagePullSecrets` AND set `accounts.enabled: true`.
+accounts:
+  enabled: false
+  replicaCount: 1
+  image:
+    registry: ghcr.io
+    repository: plan4better/goat-accounts
+    tag: ""
+    pullPolicy: IfNotPresent
+  config:
+    ENVIRONMENT: prod
+    REALM_NAME: p4b
+    # Same boot-safe placeholders + accounts-specific
+    KEYCLOAK_SERVER_URL: "http://placeholder-keycloak"
+    KEYCLOAK_ADMIN: "admin"
+    SMTP_HOST: "placeholder"
+    SMTP_PORT: "587"
+    SMTP_USER: "placeholder"
+    SMTP_FROM: "noreply@example.com"
+    AWS_REGION: "us-east-1"
+    AWS_S3_ASSETS_BUCKET: "placeholder"
+    STRIPE_PUBLIC_KEY: "placeholder"
+  extraEnv:
+    - name: API_SECRET_KEY
+      value: "placeholder-api-secret"
+    - name: KEYCLOAK_ADMIN_PASSWORD
+      value: "placeholder"
+    - name: SMTP_PASSWORD
+      value: "placeholder"
+    - name: STRIPE_SECRET_KEY
+      value: "placeholder"
+    - name: HUBSPOT_ACCESS_TOKEN
+      value: "placeholder"
+    - name: AWS_ACCESS_KEY_ID
+      value: "placeholder-aws-key"
+    - name: AWS_SECRET_ACCESS_KEY
+      value: "placeholder-aws-secret"
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 5000
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  livenessProbe:
+    enabled: true                  # accounts has /api/healthz
+    httpGet:
+      path: /api/healthz
+      port: http
+    initialDelaySeconds: 20
+    timeoutSeconds: 60
+    periodSeconds: 120
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /api/healthz
+      port: http
+    initialDelaySeconds: 10
+    timeoutSeconds: 60
+    periodSeconds: 120
+    failureThreshold: 3
+    successThreshold: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+# ─── Processes (OGC API Processes) ─────────────────────────────────────────
+# Disabled by default: processes shares DuckLake state with geoapi and has
+# the same bootstrap requirement. Set `processes.config.DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"`
+# and `processes.enabled: true` to enable.
+processes:
+  enabled: false
+  replicaCount: 1
+  image:
+    registry: ghcr.io
+    repository: plan4better/goat/processes
+    tag: ""
+    pullPolicy: IfNotPresent
+  config:
+    ENVIRONMENT: prod
+    DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"
+    AWS_REGION: "us-east-1"
+    S3_PROVIDER: "minio"
+    S3_REGION: "us-east-1"
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      value: "placeholder-aws-key"
+    - name: AWS_SECRET_ACCESS_KEY
+      value: "placeholder-aws-secret"
+    - name: S3_ACCESS_KEY_ID
+      value: "placeholder-s3-key"
+    - name: S3_SECRET_ACCESS_KEY
+      value: "placeholder-s3-secret"
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  livenessProbe:
+    enabled: false
+  readinessProbe:
+    enabled: false
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+# ─── Postgres ──────────────────────────────────────────────────────────────
+postgresql:
+  operator:
+    enabled: true                  # bundled by default; set false to use a pre-existing CNPG operator or external Postgres
+  cluster:
+    enabled: true                  # CNPG Cluster CR created by THIS chart
+    instances: 1
+    storage:
+      size: 20Gi
+      storageClass: ""             # falls back to global.storageClass
+    backup:
+      enabled: false
+  external:
+    host: ""
+    port: 5432
+    database: goat
+    existingSecret: ""             # required when cluster.enabled: false
+    existingSecretUserKey: username
+    existingSecretPasswordKey: password
+    sslMode: prefer
+
+# ─── Redis ─────────────────────────────────────────────────────────────────
+# The bitnami/redis sub-chart's default image registry (docker.io/bitnami)
+# was retired in August 2025; free images are now at bitnamilegacy. Pin the
+# redis sub-chart image to bitnamilegacy and acknowledge via the chart's
+# security flag. See https://github.com/bitnami/charts/issues/30850.
+redis:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/redis
+  auth:
+    enabled: true
+  master:
+    persistence:
+      enabled: false               # cache; no PV needed

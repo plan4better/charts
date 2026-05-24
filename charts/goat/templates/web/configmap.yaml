@@ -1,0 +1,14 @@
+{{- if .Values.web.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "goat.serviceFullname" (dict "context" . "component" "web") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "web") | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.web.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  AUTH: {{ .Values.web.auth.enabled | toString | quote }}
+{{- end }}

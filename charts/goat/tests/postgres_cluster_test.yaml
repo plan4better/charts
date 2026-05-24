@@ -1,0 +1,38 @@
+suite: Postgres Cluster CR
+templates:
+  - postgresql/cluster.yaml
+tests:
+  - it: not rendered when cluster disabled
+    set:
+      postgresql.cluster.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: rendered with instances + storage when enabled
+    set:
+      postgresql.cluster.enabled: true
+      postgresql.cluster.instances: 2
+      postgresql.cluster.storage.size: 50Gi
+      postgresql.cluster.storage.storageClass: "longhorn"
+    asserts:
+      - isKind:
+          of: Cluster
+      - equal:
+          path: apiVersion
+          value: postgresql.cnpg.io/v1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-goat-pg
+      - equal:
+          path: spec.instances
+          value: 2
+      - equal:
+          path: spec.storage.size
+          value: 50Gi
+      - equal:
+          path: spec.storage.storageClass
+          value: longhorn
+      - contains:
+          path: spec.bootstrap.initdb.postInitApplicationSQL
+          content: CREATE EXTENSION IF NOT EXISTS postgis

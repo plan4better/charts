@@ -1,0 +1,14 @@
+# Downloaded sub-chart tarballs and build artifacts
+charts/*/charts/*.tgz
+charts/*/Chart.lock
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local renders
+/tmp/

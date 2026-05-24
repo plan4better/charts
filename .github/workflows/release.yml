@@ -1,0 +1,97 @@
+# /home/p4b/charts/.github/workflows/release.yml
+name: Release
+
+# Tag convention: <chart-name>-<semver>, e.g. `goat-0.1.0`, `goat-lite-0.5.0`.
+# The chart name is the directory under charts/ that gets packaged + published.
+on:
+  push:
+    tags:
+      - '*-[0-9]+.[0-9]+.[0-9]+'
+      - '*-[0-9]+.[0-9]+.[0-9]+-*'   # pre-release tags like goat-0.1.0-rc.1
+
+permissions:
+  contents: write     # for GitHub Release
+  packages: write     # for ghcr.io push
+  id-token: write     # for cosign keyless signing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v2.2.4
+
+      - name: Parse tag → chart name + version
+        id: parse
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Greedy split on the LAST '-' so chart names with hyphens work
+          # (e.g. "goat-lite-0.5.0" → name="goat-lite", version="0.5.0").
+          # version must match [0-9]+.[0-9]+.[0-9]+ (optionally with -prerelease)
+          if [[ ! "$TAG" =~ ^(.+)-([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?)$ ]]; then
+            echo "::error::Tag '$TAG' doesn't match expected pattern <chart-name>-<semver>"
+            exit 1
+          fi
+          CHART="${BASH_REMATCH[1]}"
+          VERSION="${BASH_REMATCH[2]}"
+          echo "chart=$CHART" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag '$TAG' → chart='$CHART' version='$VERSION'"
+
+          # Sanity-check the chart directory exists
+          if [ ! -d "charts/$CHART" ]; then
+            echo "::error::No chart directory at charts/$CHART/"
+            exit 1
+          fi
+
+          # Sanity-check Chart.yaml's version matches the tag's version
+          CHART_VERSION=$(grep '^version:' "charts/$CHART/Chart.yaml" | awk '{print $2}' | tr -d '"')
+          if [ "$CHART_VERSION" != "$VERSION" ]; then
+            echo "::error::charts/$CHART/Chart.yaml version ($CHART_VERSION) does not match tag version ($VERSION)"
+            exit 1
+          fi
+
+      - name: helm dependency update
+        run: helm dependency update charts/${{ steps.parse.outputs.chart }}/
+
+      - name: helm package
+        run: helm package charts/${{ steps.parse.outputs.chart }}/ --destination /tmp/
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: helm push to OCI registry
+        id: push
+        run: |
+          set -o pipefail
+          OUTPUT=$(helm push /tmp/${{ steps.parse.outputs.chart }}-${{ steps.parse.outputs.version }}.tgz \
+                   oci://ghcr.io/${{ github.repository_owner }}/charts 2>&1 | tee /dev/stderr)
+          DIGEST=$(echo "$OUTPUT" | grep 'Digest:' | awk '{print $2}')
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: cosign sign (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ github.repository_owner }}/charts/${{ steps.parse.outputs.chart }}@${{ steps.push.outputs.digest }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.parse.outputs.chart }} ${{ steps.parse.outputs.version }}
+          files: /tmp/${{ steps.parse.outputs.chart }}-${{ steps.parse.outputs.version }}.tgz
+          generate_release_notes: true

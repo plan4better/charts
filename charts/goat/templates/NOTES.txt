@@ -1,0 +1,15 @@
+GOAT Helm chart v{{ .Chart.Version }} (app v{{ .Chart.AppVersion }}) installed
+into namespace "{{ .Release.Namespace }}" as release "{{ .Release.Name }}".
+
+Phase 1 ships only the `core` service. The following services are NOT yet
+included: web, geoapi, accounts, processes, windmill, caddy, routing.
+
+To check core health from inside the cluster:
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ .Release.Name }}-core -- curl -sf http://localhost:8000/api/healthz
+
+If you bundled redis (redis.enabled=true), its password is in:
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Release.Name }}-redis -o jsonpath='{.data.redis-password}' | base64 -d
+
+For external Postgres, ensure the secret named in
+postgresql.external.existingSecret exists in namespace "{{ .Release.Namespace }}"
+before `helm install`. See README.md for details.

@@ -1,0 +1,17 @@
+{{- if .Values.core.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "goat.serviceFullname" (dict "context" . "component" "core") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "core") | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.core.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  POSTGRES_SERVER: {{ include "goat.postgresql.host" $ | quote }}
+  POSTGRES_DB: {{ include "goat.postgresql.database" $ | quote }}
+  POSTGRES_PORT: {{ include "goat.postgresql.port" $ | quote }}
+  AUTH: {{ .Values.core.auth.enabled | toString | quote }}
+{{- end }}
