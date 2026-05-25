@@ -69,9 +69,24 @@ core:
     - name: S3_SECRET_ACCESS_KEY
       value: "placeholder-s3-secret"
 
-  # Per-feature toggles
+  # OIDC/Keycloak integration. When enabled, the core service expects a K8s
+  # Secret (named via `existingSecret`) containing the Keycloak server URL,
+  # realm name, client ID, and client secret. The civitas-goat-addon
+  # provisions this automatically in civitas-core deployments.
   auth:
-    enabled: false                 # Phase 1: AUTH=false (no Keycloak required); flips on in Phase 2
+    enabled: false
+    # K8s Secret in the release namespace. Required when `enabled: true`.
+    # Expected keys (override key names below if you used different keys):
+    #   server-url    e.g. https://idm.civitas.test
+    #   realm         e.g. cc-loc
+    #   client-id     e.g. goat-web (used by both core token validation + web login)
+    #   client-secret the Keycloak-generated secret for the client
+    existingSecret: ""
+    existingSecretKeys:
+      serverUrl: server-url
+      realm: realm
+      clientId: client-id
+      clientSecret: client-secret
 
   resources: {}                    # request/limit; empty = no enforcement
 
@@ -143,6 +158,18 @@ web:
   extraEnv: []
   auth:
     enabled: false
+    existingSecret: ""
+    existingSecretKeys:
+      serverUrl: server-url
+      realm: realm
+      clientId: client-id
+      clientSecret: client-secret
+      # web (NextAuth.js) also needs a NEXTAUTH_SECRET signing key in the
+      # same Secret. The addon generates one randomly per release.
+      nextauthSecret: nextauth-secret
+    # NEXTAUTH_URL is the public URL of the web frontend (e.g. https://goat.civitas.test).
+    # When set, overrides the placeholder in web.config.NEXTAUTH_URL.
+    publicUrl: ""
   resources: {}
   service:
     type: ClusterIP

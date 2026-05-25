@@ -31,3 +31,30 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: auth.enabled + existingSecret + publicUrl sets NextAuth env from secret
+    set:
+      web.enabled: true
+      web.auth.enabled: true
+      web.auth.existingSecret: "goat-keycloak-creds"
+      web.auth.publicUrl: "https://goat.civitas.test"
+    template: web/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NEXTAUTH_URL
+            value: "https://goat.civitas.test"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NEXTAUTH_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: goat-keycloak-creds
+                key: nextauth-secret
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_ISSUER
+            value: "$(KEYCLOAK_SERVER_URL_RAW)/realms/$(REALM_NAME_RAW)"

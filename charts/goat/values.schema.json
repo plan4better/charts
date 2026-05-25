@@ -53,7 +53,17 @@
         "auth": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" }
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "type": "string" },
+            "existingSecretKeys": {
+              "type": "object",
+              "properties": {
+                "serverUrl": { "type": "string" },
+                "realm": { "type": "string" },
+                "clientId": { "type": "string" },
+                "clientSecret": { "type": "string" }
+              }
+            }
           }
         }
       },
@@ -127,7 +137,19 @@
         "auth": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" }
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "type": "string" },
+            "existingSecretKeys": {
+              "type": "object",
+              "properties": {
+                "serverUrl": { "type": "string" },
+                "realm": { "type": "string" },
+                "clientId": { "type": "string" },
+                "clientSecret": { "type": "string" },
+                "nextauthSecret": { "type": "string" }
+              }
+            },
+            "publicUrl": { "type": "string" }
           }
         }
       },

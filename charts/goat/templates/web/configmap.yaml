@@ -1,4 +1,5 @@
 {{- if .Values.web.enabled -}}
+{{- $authWired := and .Values.web.auth.enabled .Values.web.auth.existingSecret -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,7 +9,14 @@ metadata:
     {{- include "goat.serviceLabels" (dict "context" . "component" "web") | nindent 4 }}
 data:
   {{- range $k, $v := .Values.web.config }}
+  {{- /* Omit Keycloak/NextAuth placeholders when auth is wired via existingSecret */}}
+  {{- if and $authWired (or (eq $k "KEYCLOAK_ISSUER") (eq $k "KEYCLOAK_CLIENT_ID") (eq $k "KEYCLOAK_CLIENT_SECRET") (eq $k "NEXTAUTH_URL") (eq $k "NEXTAUTH_SECRET") (eq $k "NEXT_PUBLIC_AUTH_DISABLED")) -}}
+  {{- /* skip */ -}}
+  {{- else }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}
+  {{- end }}
+  {{- if not $authWired }}
   AUTH: {{ .Values.web.auth.enabled | toString | quote }}
+  {{- end }}
 {{- end }}

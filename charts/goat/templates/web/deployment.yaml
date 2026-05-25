@@ -54,6 +54,45 @@ spec:
             - configMapRef:
                 name: {{ include "goat.serviceFullname" $ctx }}
           env:
+            {{- if and .Values.web.auth.enabled .Values.web.auth.existingSecret }}
+            - name: AUTH
+              value: "true"
+            - name: NEXT_PUBLIC_AUTH_DISABLED
+              value: "false"
+            - name: KEYCLOAK_ISSUER
+              # NextAuth wants the issuer URL = <server-url>/realms/<realm>.
+              # We construct it inline from the two secret keys.
+              value: $(KEYCLOAK_SERVER_URL_RAW)/realms/$(REALM_NAME_RAW)
+            - name: KEYCLOAK_SERVER_URL_RAW
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.web.auth.existingSecret }}
+                  key: {{ .Values.web.auth.existingSecretKeys.serverUrl }}
+            - name: REALM_NAME_RAW
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.web.auth.existingSecret }}
+                  key: {{ .Values.web.auth.existingSecretKeys.realm }}
+            - name: KEYCLOAK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.web.auth.existingSecret }}
+                  key: {{ .Values.web.auth.existingSecretKeys.clientId }}
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.web.auth.existingSecret }}
+                  key: {{ .Values.web.auth.existingSecretKeys.clientSecret }}
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.web.auth.existingSecret }}
+                  key: {{ .Values.web.auth.existingSecretKeys.nextauthSecret }}
+            {{- with .Values.web.auth.publicUrl }}
+            - name: NEXTAUTH_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.web.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

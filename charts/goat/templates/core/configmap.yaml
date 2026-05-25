@@ -1,4 +1,5 @@
 {{- if .Values.core.enabled -}}
+{{- $authWired := and .Values.core.auth.enabled .Values.core.auth.existingSecret -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,10 +9,17 @@ metadata:
     {{- include "goat.serviceLabels" (dict "context" . "component" "core") | nindent 4 }}
 data:
   {{- range $k, $v := .Values.core.config }}
+  {{- /* Omit Keycloak placeholders when auth is wired via existingSecret */}}
+  {{- if and $authWired (or (eq $k "KEYCLOAK_SERVER_URL") (eq $k "REALM_NAME")) -}}
+  {{- /* skip */ -}}
+  {{- else }}
   {{ $k }}: {{ $v | quote }}
+  {{- end }}
   {{- end }}
   POSTGRES_SERVER: {{ include "goat.postgresql.host" $ | quote }}
   POSTGRES_DB: {{ include "goat.postgresql.database" $ | quote }}
   POSTGRES_PORT: {{ include "goat.postgresql.port" $ | quote }}
+  {{- if not $authWired }}
   AUTH: {{ .Values.core.auth.enabled | toString | quote }}
+  {{- end }}
 {{- end }}

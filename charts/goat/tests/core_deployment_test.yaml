@@ -82,3 +82,48 @@ tests:
           path: spec.template.spec.imagePullSecrets
           content:
             name: my-pull-secret
+
+  - it: auth.enabled with existingSecret injects KEYCLOAK env from secret
+    set:
+      core.enabled: true
+      core.auth.enabled: true
+      core.auth.existingSecret: "goat-keycloak-creds"
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    template: core/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_SERVER_URL
+            valueFrom:
+              secretKeyRef:
+                name: goat-keycloak-creds
+                key: server-url
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: goat-keycloak-creds
+                key: client-secret
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AUTH
+            value: "true"
+
+  - it: auth.enabled without existingSecret does NOT inject from secret (placeholder mode)
+    set:
+      core.enabled: true
+      core.auth.enabled: true
+      core.auth.existingSecret: ""
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    template: core/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_SECRET

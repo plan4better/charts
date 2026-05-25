@@ -64,6 +64,32 @@ spec:
                 secretKeyRef:
                   name: {{ include "goat.postgresql.secretName" . }}
                   key: {{ include "goat.postgresql.passwordKey" . }}
+            {{- if and .Values.core.auth.enabled .Values.core.auth.existingSecret }}
+            # OIDC env from existingSecret — overrides any placeholder values
+            # in core.config when core.auth.enabled is true.
+            - name: AUTH
+              value: "true"
+            - name: KEYCLOAK_SERVER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.core.auth.existingSecret }}
+                  key: {{ .Values.core.auth.existingSecretKeys.serverUrl }}
+            - name: REALM_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.core.auth.existingSecret }}
+                  key: {{ .Values.core.auth.existingSecretKeys.realm }}
+            - name: KEYCLOAK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.core.auth.existingSecret }}
+                  key: {{ .Values.core.auth.existingSecretKeys.clientId }}
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.core.auth.existingSecret }}
+                  key: {{ .Values.core.auth.existingSecretKeys.clientSecret }}
+            {{- end }}
             {{- with .Values.core.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
