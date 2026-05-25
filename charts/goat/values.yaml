@@ -375,6 +375,254 @@ processes:
     maxReplicas: 5
     targetCPUUtilizationPercentage: 80
 
+# ─── Windmill (workflow automation) ────────────────────────────────────────
+windmill:
+  # The windmill server hosts the workflow UI + API and queues jobs in postgres.
+  # Workers (below) pull jobs from the queue. Both reuse the goat postgres
+  # connection — windmill creates its own schema (`windmill`) inside the goat DB.
+  # For dedicated-DB setups, override `windmill.db.*` to point at a separate
+  # connection (Phase 3+).
+  db:
+    # Use the goat database by default; windmill creates its own schema.
+    # Set to a different name + secret to use a dedicated DB.
+    reuseGoatConnection: true
+    # When reuseGoatConnection is false, fill these:
+    external:
+      host: ""
+      port: 5432
+      database: windmill
+      existingSecret: ""
+      existingSecretUserKey: username
+      existingSecretPasswordKey: password
+
+  server:
+    enabled: true
+    replicaCount: 1
+    image:
+      registry: ghcr.io
+      repository: plan4better/goat/windmill-server
+      tag: latest
+      pullPolicy: IfNotPresent
+    config:
+      MODE: "server"
+      # BASE_URL is set per-environment via `set` or per-consumer values
+      BASE_URL: "http://localhost:8000"
+    extraEnv: []
+    resources: {}
+    service:
+      type: ClusterIP
+      port: 80
+      targetPort: 8000
+      annotations: {}
+    ingress:
+      enabled: false
+      className: ""
+      annotations: {}
+      hosts: []
+      tls: []
+    podSecurityContext: {}
+    securityContext: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    podAnnotations: {}
+    podLabels: {}
+    livenessProbe:
+      enabled: true
+      httpGet:
+        path: /api/version
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      failureThreshold: 5
+    readinessProbe:
+      enabled: true
+      httpGet:
+        path: /api/version
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+
+  workers:
+    # The "default" worker handles small, fast jobs.
+    default:
+      enabled: true
+      replicaCount: 1
+      image:
+        registry: ghcr.io
+        repository: plan4better/goat/windmill-worker-default
+        tag: latest
+        pullPolicy: IfNotPresent
+      config:
+        MODE: "worker"
+        WORKER_GROUP: "default"
+      extraEnv: []
+      resources: {}
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}
+      podAnnotations: {}
+      podLabels: {}
+
+    # The "print" worker generates PDFs / atlases (heavier; chromium-based).
+    print:
+      enabled: false
+      replicaCount: 1
+      image:
+        registry: ghcr.io
+        repository: plan4better/goat/windmill-worker-print
+        tag: latest
+        pullPolicy: IfNotPresent
+      config:
+        MODE: "worker"
+        WORKER_GROUP: "print"
+        WORKER_TAGS: "print"
+      extraEnv: []
+      resources: {}
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}
+      podAnnotations: {}
+      podLabels: {}
+
+    # The "tools" worker runs heavy geodata pipelines. Pinned to a tainted
+    # `geodata` node + mounts a shared geodata PVC. Enable only on clusters
+    # that have these.
+    tools:
+      enabled: false
+      replicaCount: 1
+      image:
+        registry: ghcr.io
+        repository: plan4better/goat/windmill-worker-tools
+        tag: latest
+        pullPolicy: IfNotPresent
+      config:
+        MODE: "worker"
+        WORKER_GROUP: "tools"
+        WORKER_TAGS: "tools"
+      extraEnv: []
+      resources: {}
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector:
+        node.kubernetes.io/server-usage: geodata
+      tolerations:
+        - key: geodata
+          value: "true"
+          effect: NoSchedule
+      affinity: {}
+      podAnnotations: {}
+      podLabels: {}
+      # When enabled, mount this shared PVC at /app/data for the worker
+      persistence:
+        enabled: true
+        storageClassName: ""        # defaults to global.storageClass
+        size: 200Gi
+        accessMode: ReadWriteOnce
+        existingClaim: ""           # set to use a pre-existing PVC
+
+    # The "workflows" worker runs orchestration jobs. Same node-pinning + PVC
+    # mount pattern as `tools` (they share the same physical resources).
+    workflows:
+      enabled: false
+      replicaCount: 1
+      image:
+        registry: ghcr.io
+        repository: plan4better/goat/windmill-worker-tools     # SAME image as tools, different group/tags
+        tag: latest
+        pullPolicy: IfNotPresent
+      config:
+        MODE: "worker"
+        WORKER_GROUP: "workflows"
+        WORKER_TAGS: "workflows"
+      extraEnv: []
+      resources: {}
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector:
+        node.kubernetes.io/server-usage: geodata
+      tolerations:
+        - key: geodata
+          value: "true"
+          effect: NoSchedule
+      affinity: {}
+      podAnnotations: {}
+      podLabels: {}
+      persistence:
+        enabled: true
+        storageClassName: ""
+        size: 200Gi
+        accessMode: ReadWriteOnce
+        existingClaim: ""           # if set, uses this PVC; otherwise creates a new one named goat-windmill-workflows-data
+
+# ─── Caddy (custom-domains feature) ────────────────────────────────────────
+# Reverse proxy with on-demand TLS that handles the "customers point their
+# own DNS at GOAT" flow. ACME challenges are answered for any domain the
+# core /api/v2/custom-domain-lookup endpoint approves.
+#
+# Disabled by default: needs a LoadBalancer Service (cluster-dependent),
+# the core service reachable for the lookup callback, and public DNS
+# pointing at the LB so Let's Encrypt can validate domains.
+caddy:
+  enabled: false
+  replicaCount: 1
+  image:
+    registry: docker.io
+    repository: caddy
+    tag: "2.8-alpine"
+    pullPolicy: IfNotPresent
+
+  # Where caddy forwards traffic for approved domains. By default, the
+  # in-chart web service. Set to an external host:port for clusters where
+  # the frontend lives elsewhere.
+  upstream:
+    # If empty, defaults to the in-chart web service (goat-web)
+    host: ""
+    port: 80
+
+  # Where caddy calls to ask "should I issue an ACME cert for this domain?".
+  # By default, the in-chart core service's /api/v2/custom-domain-lookup.
+  ask:
+    # If empty, defaults to the in-chart core service
+    host: ""
+    port: 80
+    path: "/api/v2/custom-domain-lookup"
+
+  service:
+    type: LoadBalancer
+    httpPort: 80
+    httpsPort: 443
+    annotations: {}
+    # For clusters with MetalLB or similar: set a static IP here.
+    loadBalancerIP: ""
+
+  # ACME state — losing it forces re-issuance of every cert (Let's Encrypt
+  # rate-limits!). KEEP this persistent in any non-throwaway deployment.
+  persistence:
+    enabled: true
+    storageClassName: ""        # defaults to global.storageClass
+    size: 1Gi
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+
+  # Email used for ACME issuance. Required by Let's Encrypt for revocation
+  # notices and rate-limit policy. Override per deployment.
+  acmeEmail: "admin@example.com"
+
+  resources: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+
 # ─── Postgres ──────────────────────────────────────────────────────────────
 postgresql:
   operator:

@@ -253,6 +253,123 @@
     "redis": {
       "type": "object",
       "properties": { "enabled": { "type": "boolean" } }
+    },
+    "caddy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "image": {
+          "type": "object",
+          "properties": {
+            "registry": { "type": "string" },
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          },
+          "required": ["repository"]
+        },
+        "upstream": {
+          "type": "object",
+          "properties": {
+            "host": { "type": "string" },
+            "port": { "type": "integer" }
+          }
+        },
+        "ask": {
+          "type": "object",
+          "properties": {
+            "host": { "type": "string" },
+            "port": { "type": "integer" },
+            "path": { "type": "string" }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+            "httpPort": { "type": "integer" },
+            "httpsPort": { "type": "integer" },
+            "annotations": { "type": "object" },
+            "loadBalancerIP": { "type": "string" }
+          }
+        },
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "storageClassName": { "type": "string" },
+            "size": { "type": "string" },
+            "accessMode": { "type": "string" },
+            "existingClaim": { "type": "string" }
+          }
+        },
+        "acmeEmail": { "type": "string" },
+        "resources": { "type": "object" }
+      },
+      "required": ["enabled"]
+    },
+    "windmill": {
+      "type": "object",
+      "properties": {
+        "db": {
+          "type": "object",
+          "properties": {
+            "reuseGoatConnection": { "type": "boolean" },
+            "external": { "type": "object" }
+          }
+        },
+        "server": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "replicaCount": { "type": "integer", "minimum": 1 },
+            "image": {
+              "type": "object",
+              "properties": {
+                "registry": { "type": "string" },
+                "repository": { "type": "string" },
+                "tag": { "type": "string" },
+                "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+              },
+              "required": ["repository"]
+            },
+            "config": { "type": "object" },
+            "extraEnv": { "type": "array" },
+            "resources": { "type": "object" },
+            "service": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+                "port": { "type": "integer" },
+                "targetPort": { "type": "integer" }
+              }
+            },
+            "ingress": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "className": { "type": "string" },
+                "annotations": { "type": "object" },
+                "hosts": { "type": "array" },
+                "tls": { "type": "array" }
+              }
+            },
+            "livenessProbe": { "type": "object" },
+            "readinessProbe": { "type": "object" }
+          },
+          "required": ["enabled"]
+        },
+        "workers": {
+          "type": "object",
+          "properties": {
+            "default":   { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" } } },
+            "print":     { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" } } },
+            "tools":     { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" }, "persistence": { "type": "object" }, "nodeSelector": { "type": ["object", "null"] }, "tolerations": { "type": ["array", "null"] } } },
+            "workflows": { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" }, "persistence": { "type": "object" }, "nodeSelector": { "type": ["object", "null"] }, "tolerations": { "type": ["array", "null"] } } }
+          }
+        }
+      }
     }
   }
 }

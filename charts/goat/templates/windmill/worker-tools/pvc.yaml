@@ -1,0 +1,18 @@
+{{- if and .Values.windmill.workers.tools.enabled .Values.windmill.workers.tools.persistence.enabled (not .Values.windmill.workers.tools.persistence.existingClaim) -}}
+{{- $component := "windmill-worker-tools" -}}
+{{- $ctx := dict "context" . "component" $component -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "goat.fullname" . }}-windmill-tools-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" $ctx | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.windmill.workers.tools.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.windmill.workers.tools.persistence.size }}
+  storageClassName: {{ default .Values.global.storageClass .Values.windmill.workers.tools.persistence.storageClassName | quote }}
+{{- end -}}

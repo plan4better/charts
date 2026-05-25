@@ -1,0 +1,13 @@
+{{- if .Values.windmill.workers.tools.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "goat.serviceFullname" (dict "context" . "component" "windmill-worker-tools") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "windmill-worker-tools") | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.windmill.workers.tools.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+{{- end }}

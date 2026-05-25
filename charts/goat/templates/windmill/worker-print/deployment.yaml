@@ -1,0 +1,85 @@
+{{- if .Values.windmill.workers.print.enabled -}}
+{{- $component := "windmill-worker-print" -}}
+{{- $ctx := dict "context" . "component" $component -}}
+{{- $worker := .Values.windmill.workers.print -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "goat.serviceFullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "goat.serviceSelectorLabels" $ctx | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 50%
+  template:
+    metadata:
+      labels:
+        {{- include "goat.serviceSelectorLabels" $ctx | nindent 8 }}
+        {{- with $worker.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $worker.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $worker.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: windmill-worker-print
+          image: {{ include "goat.image" (dict "image" $worker.image "global" .Values.global "root" $) }}
+          imagePullPolicy: {{ $worker.image.pullPolicy }}
+          {{- with $worker.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "goat.serviceFullname" $ctx }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.postgresql.secretName" . }}
+                  key: {{ include "goat.postgresql.userKey" . }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.postgresql.secretName" . }}
+                  key: {{ include "goat.postgresql.passwordKey" . }}
+            - name: DATABASE_URL
+              value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "goat.postgresql.host" . }}:{{ include "goat.postgresql.port" . }}/{{ include "goat.postgresql.database" . }}?sslmode=prefer"
+            {{- with $worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $worker.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with $worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
