@@ -59,10 +59,14 @@ spec:
               value: "true"
             - name: NEXT_PUBLIC_AUTH_DISABLED
               value: "false"
-            - name: KEYCLOAK_ISSUER
-              # NextAuth wants the issuer URL = <server-url>/realms/<realm>.
-              # We construct it inline from the two secret keys.
-              value: $(KEYCLOAK_SERVER_URL_RAW)/realms/$(REALM_NAME_RAW)
+            # The web app reads issuer & client-id from NEXT_PUBLIC_* env vars
+            # (baked into the bundle at build time as APP_* placeholders and
+            # substituted by entrypoint.sh at container start). The client
+            # secret stays server-only.
+            #
+            # KEYCLOAK_SERVER_URL_RAW and REALM_NAME_RAW must come BEFORE
+            # NEXT_PUBLIC_KEYCLOAK_ISSUER — K8s only substitutes $(VAR) for
+            # vars defined earlier in the env array.
             - name: KEYCLOAK_SERVER_URL_RAW
               valueFrom:
                 secretKeyRef:
@@ -73,7 +77,9 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.web.auth.existingSecret }}
                   key: {{ .Values.web.auth.existingSecretKeys.realm }}
-            - name: KEYCLOAK_CLIENT_ID
+            - name: NEXT_PUBLIC_KEYCLOAK_ISSUER
+              value: $(KEYCLOAK_SERVER_URL_RAW)/realms/$(REALM_NAME_RAW)
+            - name: NEXT_PUBLIC_KEYCLOAK_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.web.auth.existingSecret }}
@@ -110,6 +116,14 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.web.extraVolumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.web.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.web.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

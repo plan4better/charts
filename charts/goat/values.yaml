@@ -156,6 +156,10 @@ web:
     KEYCLOAK_CLIENT_SECRET: "placeholder"
     NEXT_PUBLIC_AUTH_DISABLED: "true"
   extraEnv: []
+  # Mount extra volumes (e.g. CA bundles for NextAuth to trust self-signed
+  # Keycloak certs via NODE_EXTRA_CA_CERTS).
+  extraVolumes: []
+  extraVolumeMounts: []
   auth:
     enabled: false
     existingSecret: ""
