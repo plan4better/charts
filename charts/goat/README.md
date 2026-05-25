@@ -2,21 +2,27 @@
 
 Helm chart for deploying GOAT (Geo Open Accessibility Tool) on Kubernetes.
 
-## Scope (v0.1.0)
+## Scope (v0.2.0)
 
-This release ships templates for **core** and **web** (both enabled by default), plus
-**geoapi**, **accounts**, and **processes** (templates included, default disabled — see
-[Enabling optional services](#enabling-optional-services)).
+| Service | Default | Notes |
+|---|---|---|
+| **core** | ✅ enabled | Main API server |
+| **web** | ✅ enabled | Next.js frontend |
+| **windmill** server + default worker | ✅ enabled | Workflow engine; reuses goat Postgres connection |
+| **windmill** print/tools/workflows workers | ❌ opt-in | Heavier requirements (chromium / tainted nodes / PVCs) |
+| **geoapi** | ❌ opt-in | Needs DuckLake bootstrap |
+| **accounts** | ❌ opt-in | Private image, needs pull secret |
+| **processes** | ❌ opt-in | Needs DuckLake bootstrap |
+| **caddy** custom-domains | ❌ opt-in | LoadBalancer Service + public DNS + ACME |
 
-Not yet included: `windmill`, `caddy`, `routing`. See the
-[design spec](../../docs/superpowers/specs/2026-05-23-goat-helm-chart-design.md)
-for the roadmap.
+Not in the chart: `routing` (deployed alongside, owned by infra), `celery-flower` (not used).
+See the design spec under `docs/` for the roadmap.
 
 ## Installing
 
 ```sh
 helm install goat oci://ghcr.io/plan4better/charts/goat \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace goat --create-namespace \
   --values your-values.yaml
 ```
@@ -24,16 +30,17 @@ helm install goat oci://ghcr.io/plan4better/charts/goat \
 ## Quick start — bundled deps (development)
 
 The chart ships with sensible defaults: a CloudNativePG-managed Postgres
-cluster, a bundled Redis, and the `core` + `web` deployments. To install
-with everything bundled (good for local k3d/kind testing):
+cluster, a bundled Redis, the `core` + `web` deployments, and a windmill
+server with one default worker. To install with everything bundled
+(good for local k3d/kind testing):
 
 ```sh
-helm install goat oci://ghcr.io/plan4better/charts/goat --version 0.1.0
+helm install goat oci://ghcr.io/plan4better/charts/goat --version 0.2.0
 ```
 
-This deploys the `goat-core` API and `goat-web` Next.js frontend, backed by
-a CNPG-managed Postgres cluster and Redis. It requires the CloudNativePG
-operator's CRDs to be installable in your cluster.
+This deploys 4 Deployments: `goat-core`, `goat-web`, `goat-windmill-server`,
+`goat-windmill-worker-default` (plus the CNPG operator and Redis sub-charts).
+It requires the CloudNativePG operator's CRDs to be installable in your cluster.
 
 ## Quick start — external Postgres
 
@@ -82,6 +89,14 @@ the key names via `postgresql.external.existingSecretUserKey` and
 | `postgresql.external.existingSecret` | string | `""` | K8s Secret with `username`+`password`. |
 | `redis.enabled` | bool | `true` | Bundled Redis sub-chart. |
 | `redis.image.repository` | string | `bitnamilegacy/redis` | Bitnami moved free images to `bitnamilegacy` in Aug 2025. |
+| `windmill.server.enabled` | bool | `true` | Deploy windmill server (workflow engine). |
+| `windmill.workers.default.enabled` | bool | `true` | Deploy default windmill worker. |
+| `windmill.workers.default.replicaCount` | int | `1` | Scale workers via this knob. |
+| `windmill.workers.print.enabled` | bool | `false` | Heavier worker for PDF/atlas generation (chromium). |
+| `windmill.workers.tools.enabled` | bool | `false` | Geodata pipelines; needs tainted node + PVC. |
+| `windmill.workers.workflows.enabled` | bool | `false` | Same as tools (different WORKER_GROUP). |
+| `caddy.enabled` | bool | `false` | Custom-domains feature (LoadBalancer + ACME on-demand TLS). |
+| `caddy.acmeEmail` | string | `admin@example.com` | Email for Let's Encrypt issuance — override per deployment. |
 | `global.imageRegistry` | string | `""` | Mirror override for airgap deployments. |
 | `global.security.allowInsecureImages` | bool | `true` | Required by bitnami sub-charts to accept `bitnamilegacy` images. |
 
@@ -123,6 +138,45 @@ kubectl -n <release-ns> create secret docker-registry ghcr-pull-secret \
   --docker-password=<your-pat>
 ```
 
+### Heavy windmill workers — `tools` and `workflows`
+
+These workers pin to a tainted node (`node.kubernetes.io/server-usage=geodata`, toleration `geodata=true:NoSchedule`) and mount a shared geodata PVC. They only run on clusters that have such a node pool. To enable:
+
+```yaml
+windmill:
+  workers:
+    tools:
+      enabled: true
+      replicaCount: 1
+      persistence:
+        enabled: true
+        size: 200Gi
+        # storageClassName: longhorn   # override if needed
+    workflows:
+      enabled: true
+      replicaCount: 1
+```
+
+Without a tainted node available, the worker pods will sit in `Pending` and the chart's `helm install --wait` will time out. Don't enable them unless you've prepared the node side.
+
+### `caddy` — custom-domains feature
+
+Caddy fronts the web UI for customers who point their own DNS at GOAT. On-demand TLS issues Let's Encrypt certs only for domains that `goat-core /api/v2/custom-domain-lookup` approves. Requires:
+- A `LoadBalancer` service (cluster must support it — metallb / cloud LB)
+- Public DNS pointing at the LB IP for any customer domain
+- A real email for ACME issuance (LE uses it for rate-limit notices)
+
+```yaml
+caddy:
+  enabled: true
+  acmeEmail: "ops@your-org.example"
+  service:
+    type: LoadBalancer
+    loadBalancerIP: "203.0.113.5"   # optional, if you have a reserved IP
+```
+
+The chart creates a persistent volume for ACME state by default (1Gi); losing it triggers re-issuance of every cert, which hits Let's Encrypt rate limits. **Don't disable persistence in production.**
+
 ## Portability
 
 The chart targets any conformant Kubernetes cluster:
@@ -143,6 +197,13 @@ helm unittest charts/goat/
 # render with external-deps fixture
 helm template my-release charts/goat/ -f charts/goat/ci/values-external-deps.yaml
 ```
+
+## Compatibility / version history
+
+| Chart version | Adds | Notes |
+|---|---|---|
+| `0.2.0` | windmill (server + 4 workers), caddy (custom-domains) | Both off by default for opt-in; one knob each to enable |
+| `0.1.0` | initial — core, web, geoapi, accounts, processes templates | First public release |
 
 ## License
 

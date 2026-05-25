@@ -1,6 +1,8 @@
 # CI fixture: fully bundled profile.
 # - Postgres deployed in-cluster via CloudNativePG operator + Cluster CR
 # - Bundled Redis
+# - Windmill server + default worker (heavier workers opt-in)
+# - Caddy custom-domains feature ON
 # - Public-facing Ingress with TLS via cert-manager
 
 global:
@@ -22,6 +24,38 @@ core:
     tls:
       - secretName: goat-api-tls
         hosts: [api.goat.example.com]
+
+windmill:
+  server:
+    enabled: true
+    ingress:
+      enabled: true
+      className: nginx
+      hosts:
+        - host: windmill.goat.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - secretName: goat-windmill-tls
+          hosts: [windmill.goat.example.com]
+  workers:
+    default:
+      enabled: true
+      replicaCount: 1
+    print:
+      enabled: true
+      replicaCount: 1
+    tools:
+      enabled: false              # requires tainted geodata node
+    workflows:
+      enabled: false              # requires tainted geodata node
+
+caddy:
+  enabled: true
+  acmeEmail: "ops@example.com"
+  service:
+    type: LoadBalancer
 
 postgresql:
   operator:

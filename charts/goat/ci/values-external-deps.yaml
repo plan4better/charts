@@ -1,6 +1,8 @@
 # CI fixture: external dependencies profile.
 # - Postgres provisioned outside the chart (consumer-provided Service + Secret)
 # - Bundled Redis (light dep; consumers can override or disable as needed)
+# - Windmill default-off (consumer brings its own workflow engine, or doesn't need one)
+# - Caddy off (consumer fronts the chart with their own gateway / Ingress)
 # - Ingress disabled (assumes an API gateway or external Ingress fronts the API)
 
 global:
@@ -13,6 +15,16 @@ core:
     enabled: false
   auth:
     enabled: false
+
+windmill:
+  server:
+    enabled: false                # consumer either doesn't need it or runs their own
+  workers:
+    default:
+      enabled: false
+
+caddy:
+  enabled: false                  # consumer's gateway (e.g. APISIX, ingress-nginx) handles routing
 
 postgresql:
   operator:
