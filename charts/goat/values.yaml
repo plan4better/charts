@@ -381,6 +381,11 @@ processes:
       value: "placeholder-s3-key"
     - name: S3_SECRET_ACCESS_KEY
       value: "placeholder-s3-secret"
+  # When `windmill.server.enabled`, auto-inject WINDMILL_URL +
+  # WINDMILL_WORKSPACE + WINDMILL_TOKEN (from the bootstrap-managed Secret)
+  # into processes pods. Set to false to wire these yourself via
+  # `processes.extraEnv` — useful when pointing at an external windmill.
+  windmillAutoWire: true
   # Mount extra volumes (e.g. CA bundles when Keycloak runs on a self-signed
   # cert and Python requests/httpx need to trust it via REQUESTS_CA_BUNDLE).
   extraVolumes: []

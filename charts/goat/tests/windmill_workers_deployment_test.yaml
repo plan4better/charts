@@ -15,6 +15,9 @@ tests:
       postgresql.cluster.enabled: false
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/worker-default/deployment.yaml
     asserts:
       - isKind:
@@ -29,13 +32,16 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: DATABASE_URL
-            value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pg.example.com:5432/goat?sslmode=prefer"
+            value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pg.example.com:5432/windmill?sslmode=prefer"
 
   - it: default worker honors replicaCount
     set:
       windmill.workers.default.replicaCount: 4
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/worker-default/deployment.yaml
     asserts:
       - equal:
@@ -63,6 +69,9 @@ tests:
       windmill.workers.print.replicaCount: 2
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/worker-print/deployment.yaml
     asserts:
       - isKind:
@@ -89,6 +98,9 @@ tests:
       windmill.workers.tools.enabled: true
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/worker-tools/deployment.yaml
     asserts:
       - isKind:
@@ -120,6 +132,9 @@ tests:
       windmill.workers.tools.persistence.existingClaim: "my-existing-pvc"
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/worker-tools/deployment.yaml
     asserts:
       - equal:
@@ -138,6 +153,9 @@ tests:
       windmill.workers.workflows.enabled: true
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/worker-workflows/deployment.yaml
     asserts:
       - isKind:

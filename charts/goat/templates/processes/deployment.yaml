@@ -64,6 +64,31 @@ spec:
                 secretKeyRef:
                   name: {{ include "goat.postgresql.secretName" . }}
                   key: {{ include "goat.postgresql.passwordKey" . }}
+            {{- /*
+            Auto-wire processes → windmill when both are enabled in the same
+            release. WINDMILL_URL points at the in-cluster Service;
+            WINDMILL_WORKSPACE matches what the bootstrap hook creates;
+            WINDMILL_TOKEN is the API token the bootstrap hook writes to a
+            K8s Secret (optional:true so processes pods come up before
+            the post-install hook finishes on first deploy — they get the
+            token via env var on the next reconcile / restart).
+            Disable with `processes.windmillAutoWire: false` if you wire
+            these yourself via `processes.extraEnv`.
+            */}}
+            {{- if and .Values.windmill.server.enabled (default true .Values.processes.windmillAutoWire) }}
+            - name: WINDMILL_URL
+              value: "http://{{ include "goat.fullname" . }}-windmill-server"
+            - name: WINDMILL_WORKSPACE
+              value: {{ .Values.windmill.bootstrap.workspace | default "goat" | quote }}
+            {{- if .Values.windmill.bootstrap.enabled }}
+            - name: WINDMILL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-windmill-token" (include "goat.fullname" .)) .Values.windmill.bootstrap.tokenSecret.name }}
+                  key: {{ default "token" .Values.windmill.bootstrap.tokenSecret.key }}
+                  optional: true
+            {{- end }}
+            {{- end }}
             {{- with .Values.processes.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

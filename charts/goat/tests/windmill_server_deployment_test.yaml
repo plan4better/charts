@@ -9,6 +9,9 @@ tests:
       postgresql.cluster.enabled: false
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/server/deployment.yaml
     asserts:
       - isKind:
@@ -43,13 +46,16 @@ tests:
       postgresql.cluster.enabled: false
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/server/deployment.yaml
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: DATABASE_URL
-            value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pg.example.com:5432/goat?sslmode=prefer"
+            value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pg.example.com:5432/windmill?sslmode=prefer"
 
   - it: applies replicaCount override
     set:
@@ -57,6 +63,9 @@ tests:
       windmill.server.replicaCount: 3
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/server/deployment.yaml
     asserts:
       - equal:
@@ -77,6 +86,9 @@ tests:
       global.imageRegistry: "harbor.internal"
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"
+      windmill.db.reuseGoatConnection: false
+      windmill.db.external.host: "pg.example.com"
+      windmill.db.external.existingSecret: "windmill-pg-secret"
     template: windmill/server/deployment.yaml
     asserts:
       - matchRegex:

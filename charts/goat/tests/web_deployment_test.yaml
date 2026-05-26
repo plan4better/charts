@@ -56,5 +56,5 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: KEYCLOAK_ISSUER
+            name: NEXT_PUBLIC_KEYCLOAK_ISSUER
             value: "$(KEYCLOAK_SERVER_URL_RAW)/realms/$(REALM_NAME_RAW)"
