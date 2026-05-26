@@ -713,6 +713,36 @@ caddy:
   podAnnotations: {}
   podLabels: {}
 
+# ─── DuckLake catalog bootstrap ────────────────────────────────────────────
+# `geoapi` and `processes` attach to the DuckLake catalog in READ_ONLY mode;
+# DuckDB refuses if the catalog doesn't exist. This Job ATTACHes read-write
+# once (post-install hook) so subsequent reader pods find a populated
+# catalog. Off by default — operators bringing their own DuckLake or not
+# using geoapi/processes don't need it.
+#
+# When enabled, the hook reads Postgres credentials from the same secret
+# the rest of the chart uses (resolved via `goat.postgresql.*` helpers)
+# and S3 credentials from `s3.existingSecret` (with `access_key` /
+# `secret_key` keys, overridable).
+ducklakeBootstrap:
+  enabled: false
+  # Schema in the goat Postgres DB that DuckLake uses for its metadata.
+  catalogSchema: "ducklake"
+  # Local path the script creates + passes as DATA_PATH to the ATTACH.
+  # With S3 enabled below, parquet files go to S3; the local path is just
+  # the catalog/ATTACH marker (upstream compose convention).
+  dataDir: "/app/data/ducklake"
+  s3:
+    # Empty endpoint = use local filesystem only (dev/test only — won't
+    # scale, geoapi readers won't find files unless they share the PVC).
+    # For real installs set this to e.g. `http://minio.my-ns:9000`.
+    endpoint: ""
+    bucket: ""           # informational; bootstrap script doesn't create it
+    useSSL: false
+    existingSecret: ""   # K8s Secret with access_key + secret_key keys
+    accessKeyIdKey: "access_key"
+    secretAccessKeyKey: "secret_key"
+
 # ─── Postgres ──────────────────────────────────────────────────────────────
 postgresql:
   operator:

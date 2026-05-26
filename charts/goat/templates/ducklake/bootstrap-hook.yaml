@@ -1,0 +1,99 @@
+{{- /*
+Post-install / post-upgrade hook that ATTACHes the DuckLake catalog so
+geoapi / processes / core (and any windmill job that uses goatlib's
+DuckLake reader) can read against it.
+
+Idempotent: re-running ATTACHes against the existing catalog.
+
+Off by default (`ducklakeBootstrap.enabled: false`) — operators bringing
+their own DuckLake (or not using geoapi/processes) skip it. When on,
+expects Postgres credentials via the same secret the rest of the chart
+uses (`goat.postgresql.*`) and S3 credentials via either inline values
+or a referenced Secret.
+*/}}
+{{- if .Values.ducklakeBootstrap.enabled -}}
+{{- $name := printf "%s-ducklake-bootstrap" (include "goat.fullname" .) -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "ducklake-bootstrap") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": "post-install,post-upgrade"
+    # Weight 5 so this runs after windmill-bootstrap (weight 0) but before
+    # script-sync (weight 20). Order matters: scripts may reference layers
+    # in the DuckLake catalog, so the catalog must exist first.
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded"
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "goat.serviceSelectorLabels" (dict "context" . "component" "ducklake-bootstrap") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: python:3.11-slim
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PG_HOST
+              value: {{ include "goat.postgresql.host" . | quote }}
+            - name: PG_PORT
+              value: {{ include "goat.postgresql.port" . | quote }}
+            - name: PG_DB
+              value: {{ include "goat.postgresql.database" . | quote }}
+            - name: PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.postgresql.secretName" . }}
+                  key: {{ include "goat.postgresql.userKey" . }}
+            - name: PG_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.postgresql.secretName" . }}
+                  key: {{ include "goat.postgresql.passwordKey" . }}
+            - name: CATALOG_SCHEMA
+              value: {{ .Values.ducklakeBootstrap.catalogSchema | quote }}
+            - name: DATA_DIR
+              value: {{ .Values.ducklakeBootstrap.dataDir | quote }}
+            {{- with .Values.ducklakeBootstrap.s3.endpoint }}
+            - name: S3_ENDPOINT
+              value: {{ . | quote }}
+            - name: S3_USE_SSL
+              value: {{ $.Values.ducklakeBootstrap.s3.useSSL | quote }}
+            {{- end }}
+            {{- if .Values.ducklakeBootstrap.s3.existingSecret }}
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ducklakeBootstrap.s3.existingSecret }}
+                  key: {{ .Values.ducklakeBootstrap.s3.accessKeyIdKey | default "access_key" }}
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ducklakeBootstrap.s3.existingSecret }}
+                  key: {{ .Values.ducklakeBootstrap.s3.secretAccessKeyKey | default "secret_key" }}
+            {{- end }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              # Pin duckdb to 1.4.3: newer versions ship a DuckLake
+              # extension whose 0.4 metadata format goatlib's bundled
+              # extension can't read. See chart README for context.
+              pip install --quiet --no-cache-dir 'duckdb==1.4.3'
+              python /scripts/init.py
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: {{ $name }}
+{{- end -}}

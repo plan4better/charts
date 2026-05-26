@@ -105,6 +105,39 @@ to call `python -m goatlib.tools.sync_windmill` and
 `python -m goatlib.tasks.sync_windmill`, pre-loading plan4better's
 scripts/tasks into the workspace.
 
+### DuckLake catalog bootstrap (post-install hook)
+
+`geoapi` and `processes` attach to the DuckLake catalog **read-only**;
+DuckDB refuses to attach if the catalog doesn't exist, so both crashloop
+on first install with "Existing DuckLake at metadata catalog ... does
+not exist" unless something has ATTACHed it once read-write to create it.
+
+Enable `ducklakeBootstrap.enabled: true` and the chart runs a one-shot
+post-install Job (weight 5 — after windmill bootstrap, before script
+sync) that does the read-write ATTACH. Idempotent — re-running ATTACHes
+against the existing catalog.
+
+```yaml
+ducklakeBootstrap:
+  enabled: true
+  s3:
+    endpoint: "http://minio.my-namespace:9000"
+    bucket: "goat"
+    existingSecret: "my-s3-creds"   # Secret with access_key + secret_key
+```
+
+It uses the chart's normal `goat.postgresql.*` helpers for Postgres
+credentials, so it works against either the chart-managed CNPG cluster
+(`postgresql.cluster.enabled: true`) or an external Postgres
+(`postgresql.external.existingSecret`).
+
+> **The bootstrap script is intentionally duplicated across compose
+> (`scripts/db/init-ducklake.py`), the civitas-goat-addon, and this
+> chart.** A followup PR in plan4better/goat will refactor the init logic
+> into `goatlib.storage.ducklake.__main__` (a `python -m` entrypoint), so
+> all three consumers can drop their inlined copies and call the same
+> command. Until then, each maintains its own copy.
+
 ## Quick start — external Postgres
 
 When deploying alongside a pre-existing Postgres cluster you have to
