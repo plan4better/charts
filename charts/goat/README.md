@@ -56,6 +56,55 @@ managed by the chart, the chart **automatically**:
 - wires the windmill server + workers at it automatically — no extra values
   needed
 
+### Windmill workspace + token bootstrap (post-install hook)
+
+On `helm install` / `helm upgrade`, a one-shot Job (controlled by
+`windmill.bootstrap.enabled`, default `true`) runs after the windmill
+server is up and:
+
+- waits for `goat-windmill-server` to return `200` on `/api/version`
+- logs in as the superadmin (`windmill.bootstrap.adminEmail`, default
+  `admin@windmill.dev`)
+- rotates the default `changeme` password to a chart-managed value (random
+  32-char; preserved across upgrades), or to an operator-supplied secret
+  named in `windmill.bootstrap.adminPasswordSecret`
+- creates the `windmill.bootstrap.workspace` workspace (default `goat`)
+  if missing
+- mints a non-expiring API token and writes it to K8s Secret
+  `<release>-windmill-token` (`token` key)
+
+Hook RBAC is minimal — a release-namespace `Role` granting `create` on
+Secrets in the namespace, plus `get/patch/update` scoped to the token
+Secret's name only.
+
+To plug `processes` into the bootstrapped token, set:
+
+```yaml
+processes:
+  extraEnv:
+    - name: WINDMILL_URL
+      value: "http://{{ include \"goat.fullname\" . }}-windmill-server"
+    - name: WINDMILL_WORKSPACE
+      value: "goat"
+    - name: WINDMILL_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: "{{ include \"goat.fullname\" . }}-windmill-token"
+          key: token
+          optional: true
+```
+
+Set `windmill.bootstrap.enabled: false` if you bootstrap windmill out-of-band
+(e.g. via your own provisioning pipeline) — the hook then doesn't run.
+
+### Optional: script sync
+
+Set `windmill.scriptSync.enabled: true` to run a second post-install hook
+(weight 20, after bootstrap) that uses the `windmill-worker-tools` image
+to call `python -m goatlib.tools.sync_windmill` and
+`python -m goatlib.tasks.sync_windmill`, pre-loading plan4better's
+scripts/tasks into the workspace.
+
 ## Quick start — external Postgres
 
 When deploying alongside a pre-existing Postgres cluster you have to

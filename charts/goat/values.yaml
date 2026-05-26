@@ -442,6 +442,44 @@ windmill:
       existingSecretUserKey: username
       existingSecretPasswordKey: password
 
+  # Post-install bootstrap: creates the workspace, rotates the default
+  # superadmin password, and mints an API token that downstream services
+  # (e.g. `processes`) consume via secretKeyRef on `windmill-token`.
+  bootstrap:
+    enabled: true
+    # Workspace that the bootstrap creates; same name `processes` expects via
+    # WINDMILL_WORKSPACE.
+    workspace: "goat"
+    # Email of the windmill superadmin user. `admin@windmill.dev` is the
+    # default windmill creates on first start; override here if your default
+    # admin email is different.
+    adminEmail: "admin@windmill.dev"
+    # Password used after rotation. If `name` is empty (default) the chart
+    # generates one with randAlphaNum 32 and persists it in the K8s Secret
+    # `<release>-windmill-admin-cred` (kept across upgrade/uninstall via
+    # `helm.sh/resource-policy: keep`). To use an operator-supplied password,
+    # set `name` to your existing Secret.
+    adminPasswordSecret:
+      name: ""
+      key: password
+    # K8s Secret name + key where the minted API token is stored. The
+    # `processes` deployment template references the same default.
+    tokenSecret:
+      name: ""           # default: <release>-windmill-token
+      key: token
+
+  # Optional: sync goatlib's bundled tools/tasks (Python scripts) into the
+  # windmill workspace. Off by default — needs the `windmill-worker-tools`
+  # image which is larger than `python:3.11-slim`. Turn on if you want
+  # plan4better's tools pre-loaded after install.
+  scriptSync:
+    enabled: false
+    image:
+      registry: ghcr.io
+      repository: plan4better/goat/windmill-worker-tools
+      tag: latest
+      pullPolicy: IfNotPresent
+
   server:
     enabled: true
     replicaCount: 1
