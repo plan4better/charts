@@ -237,6 +237,10 @@ geoapi:
       value: "placeholder-s3-key"
     - name: S3_SECRET_ACCESS_KEY
       value: "placeholder-s3-secret"
+  # Mount extra volumes (e.g. CA bundles when Keycloak runs on a self-signed
+  # cert and Python requests/httpx need to trust it via REQUESTS_CA_BUNDLE).
+  extraVolumes: []
+  extraVolumeMounts: []
   resources: {}
   service:
     type: ClusterIP
@@ -377,6 +381,10 @@ processes:
       value: "placeholder-s3-key"
     - name: S3_SECRET_ACCESS_KEY
       value: "placeholder-s3-secret"
+  # Mount extra volumes (e.g. CA bundles when Keycloak runs on a self-signed
+  # cert and Python requests/httpx need to trust it via REQUESTS_CA_BUNDLE).
+  extraVolumes: []
+  extraVolumeMounts: []
   resources: {}
   service:
     type: ClusterIP
