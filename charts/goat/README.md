@@ -35,16 +35,80 @@ server with one default worker. To install with everything bundled
 (good for local k3d/kind testing):
 
 ```sh
-helm install goat oci://ghcr.io/plan4better/charts/goat --version 0.2.0
+helm install goat oci://ghcr.io/plan4better/charts/goat
 ```
 
 This deploys 4 Deployments: `goat-core`, `goat-web`, `goat-windmill-server`,
 `goat-windmill-worker-default` (plus the CNPG operator and Redis sub-charts).
 It requires the CloudNativePG operator's CRDs to be installable in your cluster.
 
+When `windmill.server.enabled: true` (the default) and the CNPG cluster is
+managed by the chart, the chart **automatically**:
+
+- creates a separate `windmill` database in the cluster via the CNPG
+  `bootstrap.initdb.postInitSQL`
+- declares `windmill_user`, `windmill_admin` (BYPASSRLS, IN ROLE windmill_user),
+  and `windmill_owner_user` (IN ROLES windmill_admin + windmill_user) as
+  CNPG `managed.roles` so they're created and IN-ROLE grants applied
+- generates the `windmill_owner_user` password (once, persisted via
+  `helm.sh/resource-policy: keep`) into the K8s Secret
+  `<release>-pg-windmill-cred`
+- wires the windmill server + workers at it automatically — no extra values
+  needed
+
 ## Quick start — external Postgres
 
-When deploying alongside a pre-existing Postgres cluster:
+When deploying alongside a pre-existing Postgres cluster you have to
+provision the goat (and, if you want windmill, the windmill) database +
+users yourself, *then* point the chart at them. The chart only takes
+operational connections — it never connects as superuser.
+
+### 1. Run this SQL as your Postgres superuser
+
+```sql
+-- ===== goat database =====
+CREATE USER goat WITH PASSWORD '<picked-by-you>';
+CREATE DATABASE goat OWNER goat;
+\c goat
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS postgis_topology;
+CREATE EXTENSION IF NOT EXISTS pgrouting;
+
+-- ===== windmill database (skip if windmill.server.enabled=false) =====
+\c postgres
+CREATE USER windmill_owner_user WITH PASSWORD '<picked-by-you>';
+CREATE DATABASE windmill OWNER windmill_owner_user;
+
+-- These role names are HARDCODED by windmill's migrations — do not rename.
+-- Without them the windmill server's first migration aborts with
+-- "role 'windmill_admin' does not exist".
+CREATE ROLE windmill_user  WITH NOLOGIN;
+CREATE ROLE windmill_admin WITH NOLOGIN BYPASSRLS;
+
+-- windmill_admin must inherit windmill_user's table grants because
+-- windmill runs runtime queries with `SET ROLE windmill_admin`.
+GRANT windmill_user  TO windmill_admin;
+GRANT windmill_admin TO windmill_owner_user;
+GRANT windmill_user  TO windmill_owner_user;
+
+-- windmill's sqlx pool ignores Postgres' default-search_path resolution,
+-- so the migrations land in `public` only if we pin it explicitly here.
+ALTER ROLE windmill_owner_user IN DATABASE windmill SET search_path = public;
+```
+
+### 2. Create K8s Secrets for the chart
+
+```sh
+kubectl create secret generic goat-postgres-creds \
+  --from-literal=username=goat \
+  --from-literal=password='<the goat password>'
+
+kubectl create secret generic windmill-postgres-creds \
+  --from-literal=username=windmill_owner_user \
+  --from-literal=password='<the windmill password>'
+```
+
+### 3. Helm install
 
 ```yaml
 postgresql:
@@ -55,15 +119,30 @@ postgresql:
   external:
     host: "your-postgres.example.svc.cluster.local"
     database: goat
-    existingSecret: "your-postgres-secret"
+    existingSecret: goat-postgres-creds
+
+windmill:
+  db:
+    reuseGoatConnection: false
+    external:
+      host: "your-postgres.example.svc.cluster.local"
+      database: windmill
+      existingSecret: windmill-postgres-creds
 
 redis:
   enabled: true
 ```
 
-The `existingSecret` must contain `username` and `password` keys (or override
-the key names via `postgresql.external.existingSecretUserKey` and
-`postgresql.external.existingSecretPasswordKey`).
+The `existingSecret`s must contain `username` and `password` keys (or
+override the key names via the `existingSecretUserKey` /
+`existingSecretPasswordKey` fields).
+
+> **Zalando-style installs (postgres-operator):** instead of running the SQL
+> manually, declare `goat` and `windmill` as `preparedDatabases` in your
+> `postgresql.acid.zalan.do` Cluster CR with `defaultUsers: true` (and for
+> windmill, `schemas: public: defaultRoles: false` to suppress the
+> Zalando-default `data` schema). The civitas-goat-addon does this; copy
+> its `tasks/01_db.yml` for a working reference.
 
 ## Key values
 

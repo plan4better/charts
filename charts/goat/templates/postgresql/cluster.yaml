@@ -1,8 +1,10 @@
 {{- if .Values.postgresql.cluster.enabled -}}
+{{- $clusterName := printf "%s-pg" (include "goat.fullname" .) -}}
+{{- $needsWindmillDB := and .Values.windmill.server.enabled (not .Values.windmill.db.reuseGoatConnection) -}}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: {{ include "goat.fullname" . }}-pg
+  name: {{ $clusterName }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "goat.serviceLabels" (dict "context" . "component" "postgresql") | nindent 4 }}
@@ -18,10 +20,54 @@ spec:
     initdb:
       database: {{ include "goat.postgresql.database" . | quote }}
       owner: goat
+      # postInitApplicationSQL runs in the goat DB as the goat owner.
       postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS postgis
         - CREATE EXTENSION IF NOT EXISTS postgis_topology
         - CREATE EXTENSION IF NOT EXISTS pgrouting
+      {{- if $needsWindmillDB }}
+      # postInitSQL runs in the `postgres` DB as the bootstrap superuser.
+      # We use it to create the separate windmill database that the windmill
+      # server + workers connect to (initdb only bootstraps one app DB).
+      #
+      # `windmill_owner_user`, `windmill_admin`, `windmill_user` roles are
+      # declared under `managed.roles` below; CNPG reconciles them BEFORE
+      # postInitSQL runs, so this CREATE DATABASE succeeds with the role as
+      # owner. The ALTER ROLE pins search_path so windmill's sqlx pool
+      # (which doesn't follow Postgres role-level defaults consistently)
+      # lands its migrations in `public` where its runtime queries look.
+      postInitSQL:
+        - CREATE DATABASE {{ include "windmill.postgresql.database" . }} OWNER windmill_owner_user
+        - ALTER ROLE windmill_owner_user IN DATABASE {{ include "windmill.postgresql.database" . }} SET search_path = public
+      {{- end }}
+  {{- if $needsWindmillDB }}
+  # Windmill expects these role names to pre-exist BEFORE its first migration
+  # runs (which does `GRANT ... TO windmill_admin`). Names are hardcoded by
+  # windmill itself — do not rename. CNPG declarative roles handle creation,
+  # IN ROLE memberships, and password secrets in one place.
+  managed:
+    roles:
+      - name: windmill_user
+        ensure: present
+        login: false
+        comment: "windmill: app-level operational role; migrations grant table privs here"
+      - name: windmill_admin
+        ensure: present
+        login: false
+        bypassRls: true
+        inRoles:
+          - windmill_user
+        comment: "windmill: role used by SET ROLE in runtime queries; inherits windmill_user grants"
+      - name: windmill_owner_user
+        ensure: present
+        login: true
+        inRoles:
+          - windmill_admin
+          - windmill_user
+        passwordSecret:
+          name: {{ $clusterName }}-windmill-cred
+        comment: "windmill: connection role used by goat-windmill-server + workers"
+  {{- end }}
   {{- with .Values.postgresql.cluster.backup }}
   {{- if .enabled }}
   backup:

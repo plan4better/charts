@@ -417,15 +417,23 @@ processes:
 # ─── Windmill (workflow automation) ────────────────────────────────────────
 windmill:
   # The windmill server hosts the workflow UI + API and queues jobs in postgres.
-  # Workers (below) pull jobs from the queue. Both reuse the goat postgres
-  # connection — windmill creates its own schema (`windmill`) inside the goat DB.
-  # For dedicated-DB setups, override `windmill.db.*` to point at a separate
-  # connection (Phase 3+).
+  # Workers (below) pull jobs from the queue.
+  #
+  # Windmill's first migration does `GRANT ... TO windmill_admin` and requires
+  # role-creation privileges. Pointing it at the shared goat DB (`db.reuseGoatConnection: true`)
+  # often fails or pollutes the goat schema with ~100 windmill tables, so the
+  # safe default below is `false` — windmill uses its own database.
+  #
+  # When `postgresql.cluster.enabled: true` (chart-managed CNPG), the chart
+  # creates the windmill DB, the `windmill_owner_user`/`windmill_admin`/
+  # `windmill_user` roles, and a Secret for the connection password — no
+  # extra config needed.
+  #
+  # When `postgresql.cluster.enabled: false` (external Postgres), fill
+  # `db.external.*` AND ensure the windmill DB + roles exist beforehand. See
+  # the chart README for the SQL you need to run.
   db:
-    # Use the goat database by default; windmill creates its own schema.
-    # Set to a different name + secret to use a dedicated DB.
-    reuseGoatConnection: true
-    # When reuseGoatConnection is false, fill these:
+    reuseGoatConnection: false
     external:
       host: ""
       port: 5432

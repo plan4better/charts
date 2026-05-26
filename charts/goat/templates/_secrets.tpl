@@ -77,14 +77,15 @@ GRANT inside whichever database it points at. Running those against the
 shared goat DB (as `windmill.db.reuseGoatConnection: true` does) is
 disruptive — windmill writes ~100 tables in the goat user's default schema
 and the migrations require role-creation privileges that the goat owner
-typically does not have.
+typically does not have. The default in values.yaml is therefore false.
 
-Set `windmill.db.reuseGoatConnection: false` and fill `windmill.db.external.*`
-to point windmill at its own database, provisioned separately.
-
-When reuseGoatConnection is true, the helpers below fall back to the
-goat postgres helpers above so the chart still renders without windmill
-db config.
+Resolution precedence (most-specific wins):
+  1. `windmill.db.reuseGoatConnection: true`     → fall through to goat helpers
+  2. `windmill.db.external.*` populated          → use those literal values
+  3. `postgresql.cluster.enabled: true` (CNPG)   → auto-wire to chart-managed
+     `<release>-pg-windmill-cred` secret + `<release>-pg-rw` service, with
+     the windmill DB / roles provisioned by the CNPG Cluster template
+  4. Otherwise                                   → fail at render time
 */}}
 
 {{- define "windmill.postgresql.secretName" -}}
@@ -92,8 +93,10 @@ db config.
 {{- include "goat.postgresql.secretName" . -}}
 {{- else if .Values.windmill.db.external.existingSecret -}}
 {{- .Values.windmill.db.external.existingSecret -}}
+{{- else if .Values.postgresql.cluster.enabled -}}
+{{- printf "%s-pg-windmill-cred" (include "goat.fullname" .) -}}
 {{- else -}}
-{{- fail "windmill.db.external.existingSecret is required when windmill.db.reuseGoatConnection is false" -}}
+{{- fail "windmill.db.external.existingSecret is required (or set postgresql.cluster.enabled: true to let the chart manage it)" -}}
 {{- end -}}
 {{- end -}}
 
@@ -116,8 +119,12 @@ db config.
 {{- define "windmill.postgresql.host" -}}
 {{- if .Values.windmill.db.reuseGoatConnection -}}
 {{- include "goat.postgresql.host" . -}}
+{{- else if .Values.windmill.db.external.host -}}
+{{- .Values.windmill.db.external.host -}}
+{{- else if .Values.postgresql.cluster.enabled -}}
+{{- printf "%s-pg-rw" (include "goat.fullname" .) -}}
 {{- else -}}
-{{- required "windmill.db.external.host is required when windmill.db.reuseGoatConnection is false" .Values.windmill.db.external.host -}}
+{{- fail "windmill.db.external.host is required (or set postgresql.cluster.enabled: true)" -}}
 {{- end -}}
 {{- end -}}
 
