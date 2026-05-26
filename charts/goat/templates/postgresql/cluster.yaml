@@ -54,7 +54,7 @@ spec:
       - name: windmill_admin
         ensure: present
         login: false
-        bypassRls: true
+        bypassrls: true
         inRoles:
           - windmill_user
         comment: "windmill: role used by SET ROLE in runtime queries; inherits windmill_user grants"
