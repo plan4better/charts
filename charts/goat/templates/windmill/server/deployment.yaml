@@ -57,15 +57,15 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "goat.postgresql.secretName" . }}
-                  key: {{ include "goat.postgresql.userKey" . }}
+                  name: {{ include "windmill.postgresql.secretName" . }}
+                  key: {{ include "windmill.postgresql.userKey" . }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "goat.postgresql.secretName" . }}
-                  key: {{ include "goat.postgresql.passwordKey" . }}
+                  name: {{ include "windmill.postgresql.secretName" . }}
+                  key: {{ include "windmill.postgresql.passwordKey" . }}
             - name: DATABASE_URL
-              value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "goat.postgresql.host" . }}:{{ include "goat.postgresql.port" . }}/{{ include "goat.postgresql.database" . }}?sslmode=prefer"
+              value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "windmill.postgresql.host" . }}:{{ include "windmill.postgresql.port" . }}/{{ include "windmill.postgresql.database" . }}?sslmode=prefer"
             {{- with .Values.windmill.server.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
