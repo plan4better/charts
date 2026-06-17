@@ -54,18 +54,23 @@ spec:
             - configMapRef:
                 name: {{ include "goat.serviceFullname" $ctx }}
           env:
-            - name: POSTGRES_USER
+            # Windmill's connection to its own DB. We use namespaced names
+            # (_WMILL_DB_*) so that the POSTGRES_* namespace stays free for
+            # operator-supplied env consumed by user scripts (goatlib reads
+            # POSTGRES_USER/POSTGRES_PASSWORD for the *application* DB, which
+            # is generally NOT the same as the windmill DB).
+            - name: _WMILL_DB_USER
               valueFrom:
                 secretKeyRef:
                   name: {{ include "windmill.postgresql.secretName" . }}
                   key: {{ include "windmill.postgresql.userKey" . }}
-            - name: POSTGRES_PASSWORD
+            - name: _WMILL_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "windmill.postgresql.secretName" . }}
                   key: {{ include "windmill.postgresql.passwordKey" . }}
             - name: DATABASE_URL
-              value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "windmill.postgresql.host" . }}:{{ include "windmill.postgresql.port" . }}/{{ include "windmill.postgresql.database" . }}?sslmode=prefer"
+              value: "postgres://$(_WMILL_DB_USER):$(_WMILL_DB_PASSWORD)@{{ include "windmill.postgresql.host" . }}:{{ include "windmill.postgresql.port" . }}/{{ include "windmill.postgresql.database" . }}?sslmode=prefer"
             {{- with .Values.windmill.server.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

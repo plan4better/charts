@@ -4,16 +4,18 @@ description: |
   Helm chart for GOAT (Geo Open Accessibility Tool) — a WebGIS platform for
   spatial analysis, accessibility modeling, and collaborative mapping.
 
-  v0.3.6 adds an optional chart-side DuckLake catalog bootstrap as a
-  Helm post-install hook (`ducklakeBootstrap.enabled: true`). Without it,
-  geoapi/processes crashloop on first install because DuckDB refuses to
-  attach a missing catalog in READ_ONLY mode. The Job ATTACHes
-  read-write once, idempotently, so subsequent reader pods find a
-  populated catalog. Bootstrap script is intentionally inlined for now;
-  a followup PR in plan4better/goat will move it into goatlib so compose
-  + chart + civitas-addon share one implementation.
+  v0.3.7 frees the `POSTGRES_*` env namespace on windmill workers / server
+  for application use. Previously the chart set `POSTGRES_USER` /
+  `POSTGRES_PASSWORD` to the *windmill database* credentials and built
+  `DATABASE_URL` from them. That shadowed `POSTGRES_*` for any goatlib
+  script (which reads them as the *application* DB connection), forcing
+  operators into workarounds. The renames are now `_WMILL_DB_USER` /
+  `_WMILL_DB_PASSWORD` — purely internal — and operators can set
+  `POSTGRES_*` freely via `windmill.workers.<X>.config` (configmap envFrom)
+  or `extraEnv` (secretKeyRefs). Pair this with `WHITELIST_ENVS` in the
+  worker config so windmill exposes the env to user scripts at runtime.
 type: application
-version: 0.3.6
+version: 0.3.7
 appVersion: "latest"   # default image tag; pin to a specific commit SHA in your values.yaml for production
 icon: https://goat.plan4better.de/favicon.ico
 home: https://github.com/plan4better/charts/tree/main/charts/goat
