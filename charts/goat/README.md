@@ -11,11 +11,9 @@ Helm chart for deploying GOAT (Geo Open Accessibility Tool) on Kubernetes.
 | **windmill** server + default worker | ✅ enabled | Workflow engine; reuses goat Postgres connection |
 | **windmill** print/tools/workflows workers | ❌ opt-in | Heavier requirements (chromium / tainted nodes / PVCs) |
 | **geoapi** | ❌ opt-in | Needs DuckLake bootstrap |
-| **accounts** | ❌ opt-in | Private image, needs pull secret |
 | **processes** | ❌ opt-in | Needs DuckLake bootstrap |
 | **caddy** custom-domains | ❌ opt-in | LoadBalancer Service + public DNS + ACME |
 
-Not in the chart: `routing` (deployed alongside, owned by infra), `celery-flower` (not used).
 See the design spec under `docs/` for the roadmap.
 
 ## Installing
@@ -242,8 +240,9 @@ override the key names via the `existingSecretUserKey` /
 | `web.auth.enabled` | bool | `false` | Enable OIDC/Keycloak for the web frontend (Phase 2+). |
 | `web.ingress.enabled` | bool | `false` | Create Ingress for the web UI (requires `hosts` populated). |
 | `geoapi.enabled` | bool | `false` | Deploy `goat-geoapi`. Requires DuckLake bootstrap (see below). |
-| `accounts.enabled` | bool | `false` | Deploy `goat-accounts`. Requires private image pull secret (see below). |
 | `processes.enabled` | bool | `false` | Deploy `goat-processes`. Requires DuckLake bootstrap (see below). |
+| `core.migrate.enabled` | bool | `true` | Run `alembic upgrade head` + `initial_data` as a Helm hook (post-install / pre-upgrade). |
+| `core.migrate.waitForDbSeconds` | int | `300` | How long the migrate hook waits for Postgres on fresh installs. |
 | `postgresql.cluster.enabled` | bool | `true` | Create CNPG Cluster CR. |
 | `postgresql.operator.enabled` | bool | `true` | Install CNPG operator sub-chart. |
 | `postgresql.external.host` | string | `""` | External Postgres host; required if cluster disabled. |
@@ -278,26 +277,16 @@ processes:
   enabled: true
 ```
 
-### `accounts` — private image
+### Schema migrations — `core.migrate` (default on)
 
-The `accounts` service uses `ghcr.io/plan4better/goat-accounts`, a private GHCR package. Anonymous pull returns 401. To enable, create a pull secret in your release namespace and reference it:
-
-```yaml
-global:
-  imagePullSecrets:
-    - name: ghcr-pull-secret
-accounts:
-  enabled: true
-```
-
-Create the pull secret with a GitHub PAT that has `read:packages` scope:
-
-```sh
-kubectl -n <release-ns> create secret docker-registry ghcr-pull-secret \
-  --docker-server=ghcr.io \
-  --docker-username=<your-github-user> \
-  --docker-password=<your-pat>
-```
+Every install/upgrade runs a Helm hook Job (`<release>-core-migrate`) before
+the new pods start: `alembic upgrade head` followed by
+`core.scripts.initial_data` (SQL functions, triggers, authz seed data — and
+the default user/organization when `core.auth.enabled: false`). On fresh
+installs it waits up to `core.migrate.waitForDbSeconds` for the bundled
+Postgres to come up. A failed migration aborts the release and leaves the
+running version untouched. Set `core.migrate.enabled: false` to manage the
+schema out-of-band.
 
 ### Heavy windmill workers — `tools` and `workflows`
 
@@ -363,8 +352,9 @@ helm template my-release charts/goat/ -f charts/goat/ci/values-external-deps.yam
 
 | Chart version | Adds | Notes |
 |---|---|---|
+| `0.4.0` | automatic schema migrations (`core.migrate.*` hook); `NEXT_PUBLIC_AUTH_DISABLED` → `NEXT_PUBLIC_AUTH` | BREAKING: flip the web auth flag in your values |
 | `0.2.0` | windmill (server + 4 workers), caddy (custom-domains) | Both off by default for opt-in; one knob each to enable |
-| `0.1.0` | initial — core, web, geoapi, accounts, processes templates | First public release |
+| `0.1.0` | initial — core, web, geoapi, processes templates | First public release |
 
 ## License
 

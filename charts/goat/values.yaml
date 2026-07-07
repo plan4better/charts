@@ -1,9 +1,8 @@
 # /home/p4b/goat/charts/goat/values.yaml
 #
-# v0.1.0 ships templates for: core, web, geoapi, accounts, processes.
-# Defaults: core+web enabled; geoapi/accounts/processes opt-in (see comments
-# above each block for why). routing/windmill/caddy excluded — see
-# docs/superpowers/specs/2026-05-23-goat-helm-chart-design.md §3 D10/D10b.
+# Ships templates for: core, web, geoapi, processes, windmill, caddy,
+# ducklake/postgresql bootstrap. Defaults: core+web enabled; the rest opt-in
+# (see comments above each block for why).
 
 # ─── Global ────────────────────────────────────────────────────────────────
 nameOverride: ""
@@ -88,6 +87,18 @@ core:
       clientId: client-id
       clientSecret: client-secret
 
+  # Schema migrations + SQL function/trigger install, run as a Helm hook
+  # (post-install for the fresh-install bootstrap, pre-upgrade so migrations
+  # land before new pods roll). `alembic upgrade head` +
+  # `core.scripts.initial_data`; both idempotent. Disable to manage the
+  # schema out-of-band.
+  migrate:
+    enabled: true
+    # Seconds to wait for Postgres before giving up (fresh installs: the
+    # bundled CNPG cluster needs time to come up).
+    waitForDbSeconds: 300
+    resources: {}
+
   resources: {}                    # request/limit; empty = no enforcement
 
   service:
@@ -154,7 +165,7 @@ web:
     KEYCLOAK_ISSUER: "http://placeholder-keycloak/realms/placeholder"
     KEYCLOAK_CLIENT_ID: "goat-web"
     KEYCLOAK_CLIENT_SECRET: "placeholder"
-    NEXT_PUBLIC_AUTH_DISABLED: "true"
+    NEXT_PUBLIC_AUTH: "false"
   extraEnv: []
   # Mount extra volumes (e.g. CA bundles for NextAuth to trust self-signed
   # Keycloak certs via NODE_EXTRA_CA_CERTS).
@@ -264,90 +275,6 @@ geoapi:
     enabled: false
   readinessProbe:
     enabled: false
-  autoscaling:
-    enabled: false
-    minReplicas: 1
-    maxReplicas: 5
-    targetCPUUtilizationPercentage: 80
-
-# ─── Accounts (user management) ────────────────────────────────────────────
-# Disabled by default: the image `ghcr.io/plan4better/goat-accounts` is private
-# (anonymous GHCR pull returns 401). To enable, provide pull credentials via
-# `global.imagePullSecrets` AND set `accounts.enabled: true`.
-accounts:
-  enabled: false
-  replicaCount: 1
-  image:
-    registry: ghcr.io
-    repository: plan4better/goat-accounts
-    tag: ""
-    pullPolicy: IfNotPresent
-  config:
-    ENVIRONMENT: prod
-    REALM_NAME: p4b
-    # Same boot-safe placeholders + accounts-specific
-    KEYCLOAK_SERVER_URL: "http://placeholder-keycloak"
-    KEYCLOAK_ADMIN: "admin"
-    SMTP_HOST: "placeholder"
-    SMTP_PORT: "587"
-    SMTP_USER: "placeholder"
-    SMTP_FROM: "noreply@example.com"
-    AWS_REGION: "us-east-1"
-    AWS_S3_ASSETS_BUCKET: "placeholder"
-    STRIPE_PUBLIC_KEY: "placeholder"
-  extraEnv:
-    - name: API_SECRET_KEY
-      value: "placeholder-api-secret"
-    - name: KEYCLOAK_ADMIN_PASSWORD
-      value: "placeholder"
-    - name: SMTP_PASSWORD
-      value: "placeholder"
-    - name: STRIPE_SECRET_KEY
-      value: "placeholder"
-    - name: HUBSPOT_ACCESS_TOKEN
-      value: "placeholder"
-    - name: AWS_ACCESS_KEY_ID
-      value: "placeholder-aws-key"
-    - name: AWS_SECRET_ACCESS_KEY
-      value: "placeholder-aws-secret"
-  resources: {}
-  service:
-    type: ClusterIP
-    port: 80
-    targetPort: 5000
-    annotations: {}
-  ingress:
-    enabled: false
-    className: ""
-    annotations: {}
-    hosts: []
-    tls: []
-  podSecurityContext: {}
-  securityContext: {}
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  podAnnotations: {}
-  podLabels: {}
-  livenessProbe:
-    enabled: true                  # accounts has /api/healthz
-    httpGet:
-      path: /api/healthz
-      port: http
-    initialDelaySeconds: 20
-    timeoutSeconds: 60
-    periodSeconds: 120
-    failureThreshold: 3
-  readinessProbe:
-    enabled: true
-    httpGet:
-      path: /api/healthz
-      port: http
-    initialDelaySeconds: 10
-    timeoutSeconds: 60
-    periodSeconds: 120
-    failureThreshold: 3
-    successThreshold: 1
   autoscaling:
     enabled: false
     minReplicas: 1

@@ -55,7 +55,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: DATABASE_URL
-            value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pg.example.com:5432/windmill?sslmode=prefer"
+            value: "postgres://$(_WMILL_DB_USER):$(_WMILL_DB_PASSWORD)@pg.example.com:5432/windmill?sslmode=prefer"
 
   - it: applies replicaCount override
     set:

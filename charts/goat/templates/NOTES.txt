@@ -1,8 +1,13 @@
 GOAT Helm chart v{{ .Chart.Version }} (app v{{ .Chart.AppVersion }}) installed
 into namespace "{{ .Release.Namespace }}" as release "{{ .Release.Name }}".
 
-Phase 1 ships only the `core` service. The following services are NOT yet
-included: web, geoapi, accounts, processes, windmill, caddy, routing.
+Enabled services follow your values (core+web on by default; geoapi,
+processes, windmill, caddy opt-in).
+{{- if .Values.core.migrate.enabled }}
+
+Schema migrations + SQL functions were applied by a Helm hook before this
+release's pods started (job: {{ include "goat.fullname" . }}-core-migrate).
+{{- end }}
 
 To check core health from inside the cluster:
   kubectl -n {{ .Release.Namespace }} exec deploy/{{ .Release.Name }}-core -- curl -sf http://localhost:8000/api/healthz

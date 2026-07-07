@@ -3,97 +3,206 @@
   "title": "GOAT Helm Chart Values",
   "type": "object",
   "properties": {
-    "nameOverride": { "type": "string" },
-    "fullnameOverride": { "type": "string" },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
     "global": {
       "type": "object",
       "properties": {
-        "imageRegistry": { "type": "string" },
-        "imagePullSecrets": { "type": "array", "items": { "type": "object" } },
-        "commonLabels": { "type": "object" },
-        "storageClass": { "type": "string" }
+        "imageRegistry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "commonLabels": {
+          "type": "object"
+        },
+        "storageClass": {
+          "type": "string"
+        }
       }
     },
     "core": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "replicaCount": { "type": "integer", "minimum": 1 },
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
         "image": {
           "type": "object",
           "properties": {
-            "registry": { "type": "string" },
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
-            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+            "registry": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
           },
-          "required": ["repository"]
+          "required": [
+            "repository"
+          ]
         },
-        "config": { "type": "object" },
-        "extraEnv": { "type": "array" },
-        "resources": { "type": "object" },
+        "config": {
+          "type": "object"
+        },
+        "extraEnv": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        },
         "service": {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-            "port": { "type": "integer" },
-            "targetPort": { "type": "integer" }
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer"
+            },
+            "targetPort": {
+              "type": "integer"
+            }
           }
         },
         "ingress": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "className": { "type": "string" },
-            "annotations": { "type": "object" },
-            "hosts": { "type": "array" },
-            "tls": { "type": "array" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "className": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "hosts": {
+              "type": "array"
+            },
+            "tls": {
+              "type": "array"
+            }
           }
         },
         "auth": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "existingSecret": { "type": "string" },
+            "enabled": {
+              "type": "boolean"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
             "existingSecretKeys": {
               "type": "object",
               "properties": {
-                "serverUrl": { "type": "string" },
-                "realm": { "type": "string" },
-                "clientId": { "type": "string" },
-                "clientSecret": { "type": "string" }
+                "serverUrl": {
+                  "type": "string"
+                },
+                "realm": {
+                  "type": "string"
+                },
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                }
               }
             }
           }
         }
       },
-      "required": ["enabled"]
+      "required": [
+        "enabled"
+      ]
     },
     "postgresql": {
       "type": "object",
       "properties": {
         "operator": {
           "type": "object",
-          "properties": { "enabled": { "type": "boolean" } }
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
         },
         "cluster": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "instances": { "type": "integer", "minimum": 1 },
-            "storage": { "type": "object" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "instances": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "storage": {
+              "type": "object"
+            }
           }
         },
         "external": {
           "type": "object",
           "properties": {
-            "host": { "type": "string" },
-            "port": { "type": "integer" },
-            "database": { "type": "string" },
-            "existingSecret": { "type": "string" },
-            "existingSecretUserKey": { "type": "string" },
-            "existingSecretPasswordKey": { "type": "string" },
-            "sslMode": { "type": "string", "enum": ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"] }
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            },
+            "database": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretUserKey": {
+              "type": "string"
+            },
+            "existingSecretPasswordKey": {
+              "type": "string"
+            },
+            "sslMode": {
+              "type": "string",
+              "enum": [
+                "disable",
+                "allow",
+                "prefer",
+                "require",
+                "verify-ca",
+                "verify-full"
+              ]
+            }
           }
         }
       }
@@ -101,235 +210,424 @@
     "web": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "replicaCount": { "type": "integer", "minimum": 1 },
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
         "image": {
           "type": "object",
           "properties": {
-            "registry": { "type": "string" },
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
-            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+            "registry": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
           },
-          "required": ["repository"]
+          "required": [
+            "repository"
+          ]
         },
-        "config": { "type": "object" },
-        "extraEnv": { "type": "array" },
-        "resources": { "type": "object" },
+        "config": {
+          "type": "object"
+        },
+        "extraEnv": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        },
         "service": {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-            "port": { "type": "integer" },
-            "targetPort": { "type": "integer" }
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer"
+            },
+            "targetPort": {
+              "type": "integer"
+            }
           }
         },
         "ingress": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "className": { "type": "string" },
-            "annotations": { "type": "object" },
-            "hosts": { "type": "array" },
-            "tls": { "type": "array" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "className": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "hosts": {
+              "type": "array"
+            },
+            "tls": {
+              "type": "array"
+            }
           }
         },
         "auth": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "existingSecret": { "type": "string" },
+            "enabled": {
+              "type": "boolean"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
             "existingSecretKeys": {
               "type": "object",
               "properties": {
-                "serverUrl": { "type": "string" },
-                "realm": { "type": "string" },
-                "clientId": { "type": "string" },
-                "clientSecret": { "type": "string" },
-                "nextauthSecret": { "type": "string" }
+                "serverUrl": {
+                  "type": "string"
+                },
+                "realm": {
+                  "type": "string"
+                },
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                },
+                "nextauthSecret": {
+                  "type": "string"
+                }
               }
             },
-            "publicUrl": { "type": "string" }
+            "publicUrl": {
+              "type": "string"
+            }
           }
         }
       },
-      "required": ["enabled"]
+      "required": [
+        "enabled"
+      ]
     },
     "geoapi": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "replicaCount": { "type": "integer", "minimum": 1 },
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
         "image": {
           "type": "object",
           "properties": {
-            "registry": { "type": "string" },
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
-            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+            "registry": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
           },
-          "required": ["repository"]
+          "required": [
+            "repository"
+          ]
         },
-        "config": { "type": "object" },
-        "extraEnv": { "type": "array" },
-        "resources": { "type": "object" },
+        "config": {
+          "type": "object"
+        },
+        "extraEnv": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        },
         "service": {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-            "port": { "type": "integer" },
-            "targetPort": { "type": "integer" }
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer"
+            },
+            "targetPort": {
+              "type": "integer"
+            }
           }
         },
         "ingress": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "className": { "type": "string" },
-            "annotations": { "type": "object" },
-            "hosts": { "type": "array" },
-            "tls": { "type": "array" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "className": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "hosts": {
+              "type": "array"
+            },
+            "tls": {
+              "type": "array"
+            }
           }
         }
       },
-      "required": ["enabled"]
-    },
-    "accounts": {
-      "type": "object",
-      "properties": {
-        "enabled": { "type": "boolean" },
-        "replicaCount": { "type": "integer", "minimum": 1 },
-        "image": {
-          "type": "object",
-          "properties": {
-            "registry": { "type": "string" },
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
-            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
-          },
-          "required": ["repository"]
-        },
-        "config": { "type": "object" },
-        "extraEnv": { "type": "array" },
-        "resources": { "type": "object" },
-        "service": {
-          "type": "object",
-          "properties": {
-            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-            "port": { "type": "integer" },
-            "targetPort": { "type": "integer" }
-          }
-        },
-        "ingress": {
-          "type": "object",
-          "properties": {
-            "enabled": { "type": "boolean" },
-            "className": { "type": "string" },
-            "annotations": { "type": "object" },
-            "hosts": { "type": "array" },
-            "tls": { "type": "array" }
-          }
-        }
-      },
-      "required": ["enabled"]
+      "required": [
+        "enabled"
+      ]
     },
     "processes": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "replicaCount": { "type": "integer", "minimum": 1 },
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
         "image": {
           "type": "object",
           "properties": {
-            "registry": { "type": "string" },
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
-            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+            "registry": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
           },
-          "required": ["repository"]
+          "required": [
+            "repository"
+          ]
         },
-        "config": { "type": "object" },
-        "extraEnv": { "type": "array" },
-        "resources": { "type": "object" },
+        "config": {
+          "type": "object"
+        },
+        "extraEnv": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        },
         "service": {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-            "port": { "type": "integer" },
-            "targetPort": { "type": "integer" }
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer"
+            },
+            "targetPort": {
+              "type": "integer"
+            }
           }
         },
         "ingress": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "className": { "type": "string" },
-            "annotations": { "type": "object" },
-            "hosts": { "type": "array" },
-            "tls": { "type": "array" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "className": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "hosts": {
+              "type": "array"
+            },
+            "tls": {
+              "type": "array"
+            }
           }
         }
       },
-      "required": ["enabled"]
+      "required": [
+        "enabled"
+      ]
     },
     "redis": {
       "type": "object",
-      "properties": { "enabled": { "type": "boolean" } }
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
     },
     "caddy": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "replicaCount": { "type": "integer", "minimum": 1 },
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
         "image": {
           "type": "object",
           "properties": {
-            "registry": { "type": "string" },
-            "repository": { "type": "string" },
-            "tag": { "type": "string" },
-            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+            "registry": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
           },
-          "required": ["repository"]
+          "required": [
+            "repository"
+          ]
         },
         "upstream": {
           "type": "object",
           "properties": {
-            "host": { "type": "string" },
-            "port": { "type": "integer" }
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
           }
         },
         "ask": {
           "type": "object",
           "properties": {
-            "host": { "type": "string" },
-            "port": { "type": "integer" },
-            "path": { "type": "string" }
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            }
           }
         },
         "service": {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-            "httpPort": { "type": "integer" },
-            "httpsPort": { "type": "integer" },
-            "annotations": { "type": "object" },
-            "loadBalancerIP": { "type": "string" }
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "httpPort": {
+              "type": "integer"
+            },
+            "httpsPort": {
+              "type": "integer"
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "loadBalancerIP": {
+              "type": "string"
+            }
           }
         },
         "persistence": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "storageClassName": { "type": "string" },
-            "size": { "type": "string" },
-            "accessMode": { "type": "string" },
-            "existingClaim": { "type": "string" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "storageClassName": {
+              "type": "string"
+            },
+            "size": {
+              "type": "string"
+            },
+            "accessMode": {
+              "type": "string"
+            },
+            "existingClaim": {
+              "type": "string"
+            }
           }
         },
-        "acmeEmail": { "type": "string" },
-        "resources": { "type": "object" }
+        "acmeEmail": {
+          "type": "string"
+        },
+        "resources": {
+          "type": "object"
+        }
       },
-      "required": ["enabled"]
+      "required": [
+        "enabled"
+      ]
     },
     "windmill": {
       "type": "object",
@@ -337,58 +635,237 @@
         "db": {
           "type": "object",
           "properties": {
-            "reuseGoatConnection": { "type": "boolean" },
-            "external": { "type": "object" }
+            "reuseGoatConnection": {
+              "type": "boolean"
+            },
+            "external": {
+              "type": "object"
+            }
           }
         },
         "server": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "replicaCount": { "type": "integer", "minimum": 1 },
+            "enabled": {
+              "type": "boolean"
+            },
+            "replicaCount": {
+              "type": "integer",
+              "minimum": 1
+            },
             "image": {
               "type": "object",
               "properties": {
-                "registry": { "type": "string" },
-                "repository": { "type": "string" },
-                "tag": { "type": "string" },
-                "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+                "registry": {
+                  "type": "string"
+                },
+                "repository": {
+                  "type": "string"
+                },
+                "tag": {
+                  "type": "string"
+                },
+                "pullPolicy": {
+                  "type": "string",
+                  "enum": [
+                    "Always",
+                    "IfNotPresent",
+                    "Never"
+                  ]
+                }
               },
-              "required": ["repository"]
+              "required": [
+                "repository"
+              ]
             },
-            "config": { "type": "object" },
-            "extraEnv": { "type": "array" },
-            "resources": { "type": "object" },
+            "config": {
+              "type": "object"
+            },
+            "extraEnv": {
+              "type": "array"
+            },
+            "resources": {
+              "type": "object"
+            },
             "service": {
               "type": "object",
               "properties": {
-                "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
-                "port": { "type": "integer" },
-                "targetPort": { "type": "integer" }
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "ClusterIP",
+                    "NodePort",
+                    "LoadBalancer"
+                  ]
+                },
+                "port": {
+                  "type": "integer"
+                },
+                "targetPort": {
+                  "type": "integer"
+                }
               }
             },
             "ingress": {
               "type": "object",
               "properties": {
-                "enabled": { "type": "boolean" },
-                "className": { "type": "string" },
-                "annotations": { "type": "object" },
-                "hosts": { "type": "array" },
-                "tls": { "type": "array" }
+                "enabled": {
+                  "type": "boolean"
+                },
+                "className": {
+                  "type": "string"
+                },
+                "annotations": {
+                  "type": "object"
+                },
+                "hosts": {
+                  "type": "array"
+                },
+                "tls": {
+                  "type": "array"
+                }
               }
             },
-            "livenessProbe": { "type": "object" },
-            "readinessProbe": { "type": "object" }
+            "livenessProbe": {
+              "type": "object"
+            },
+            "readinessProbe": {
+              "type": "object"
+            }
           },
-          "required": ["enabled"]
+          "required": [
+            "enabled"
+          ]
         },
         "workers": {
           "type": "object",
           "properties": {
-            "default":   { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" } } },
-            "print":     { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" } } },
-            "tools":     { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" }, "persistence": { "type": "object" }, "nodeSelector": { "type": ["object", "null"] }, "tolerations": { "type": ["array", "null"] } } },
-            "workflows": { "type": "object", "properties": { "enabled": { "type": "boolean" }, "replicaCount": { "type": "integer", "minimum": 1 }, "image": { "type": "object" }, "config": { "type": "object" }, "extraEnv": { "type": "array" }, "resources": { "type": "object" }, "persistence": { "type": "object" }, "nodeSelector": { "type": ["object", "null"] }, "tolerations": { "type": ["array", "null"] } } }
+            "default": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "replicaCount": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "image": {
+                  "type": "object"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "extraEnv": {
+                  "type": "array"
+                },
+                "resources": {
+                  "type": "object"
+                }
+              }
+            },
+            "print": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "replicaCount": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "image": {
+                  "type": "object"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "extraEnv": {
+                  "type": "array"
+                },
+                "resources": {
+                  "type": "object"
+                }
+              }
+            },
+            "tools": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "replicaCount": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "image": {
+                  "type": "object"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "extraEnv": {
+                  "type": "array"
+                },
+                "resources": {
+                  "type": "object"
+                },
+                "persistence": {
+                  "type": "object"
+                },
+                "nodeSelector": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "tolerations": {
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "workflows": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "replicaCount": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "image": {
+                  "type": "object"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "extraEnv": {
+                  "type": "array"
+                },
+                "resources": {
+                  "type": "object"
+                },
+                "persistence": {
+                  "type": "object"
+                },
+                "nodeSelector": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "tolerations": {
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            }
           }
         }
       }

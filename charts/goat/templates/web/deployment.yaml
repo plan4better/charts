@@ -57,8 +57,8 @@ spec:
             {{- if and .Values.web.auth.enabled .Values.web.auth.existingSecret }}
             - name: AUTH
               value: "true"
-            - name: NEXT_PUBLIC_AUTH_DISABLED
-              value: "false"
+            - name: NEXT_PUBLIC_AUTH
+              value: "true"
             # The web app reads issuer & client-id from NEXT_PUBLIC_* env vars
             # (baked into the bundle at build time as APP_* placeholders and
             # substituted by entrypoint.sh at container start). The client

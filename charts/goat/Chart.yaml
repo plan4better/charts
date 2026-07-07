@@ -4,18 +4,18 @@ description: |
   Helm chart for GOAT (Geo Open Accessibility Tool) — a WebGIS platform for
   spatial analysis, accessibility modeling, and collaborative mapping.
 
-  v0.3.7 frees the `POSTGRES_*` env namespace on windmill workers / server
-  for application use. Previously the chart set `POSTGRES_USER` /
-  `POSTGRES_PASSWORD` to the *windmill database* credentials and built
-  `DATABASE_URL` from them. That shadowed `POSTGRES_*` for any goatlib
-  script (which reads them as the *application* DB connection), forcing
-  operators into workarounds. The renames are now `_WMILL_DB_USER` /
-  `_WMILL_DB_PASSWORD` — purely internal — and operators can set
-  `POSTGRES_*` freely via `windmill.workers.<X>.config` (configmap envFrom)
-  or `extraEnv` (secretKeyRefs). Pair this with `WHITELIST_ENVS` in the
-  worker config so windmill exposes the env to user scripts at runtime.
+  v0.4.0:
+
+  - NEW: schema migrations run automatically as a Helm hook
+    (`core.migrate.*`, default on) — `alembic upgrade head` +
+    `initial_data` on post-install (fresh-install bootstrap, waits for
+    Postgres) and pre-upgrade (before new pods roll). Disable with
+    `core.migrate.enabled: false` to manage the schema out-of-band.
+  - BREAKING: `web.config.NEXT_PUBLIC_AUTH_DISABLED` is replaced by
+    `NEXT_PUBLIC_AUTH` (inverted meaning), matching the upstream single
+    AUTH switch.
 type: application
-version: 0.3.7
+version: 0.4.0
 appVersion: "latest"   # default image tag; pin to a specific commit SHA in your values.yaml for production
 icon: https://goat.plan4better.de/favicon.ico
 home: https://github.com/plan4better/charts/tree/main/charts/goat

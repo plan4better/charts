@@ -10,7 +10,7 @@ metadata:
 data:
   {{- range $k, $v := .Values.web.config }}
   {{- /* Omit Keycloak/NextAuth placeholders when auth is wired via existingSecret */}}
-  {{- if and $authWired (or (eq $k "KEYCLOAK_ISSUER") (eq $k "KEYCLOAK_CLIENT_ID") (eq $k "KEYCLOAK_CLIENT_SECRET") (eq $k "NEXTAUTH_URL") (eq $k "NEXTAUTH_SECRET") (eq $k "NEXT_PUBLIC_AUTH_DISABLED")) -}}
+  {{- if and $authWired (or (eq $k "KEYCLOAK_ISSUER") (eq $k "KEYCLOAK_CLIENT_ID") (eq $k "KEYCLOAK_CLIENT_SECRET") (eq $k "NEXTAUTH_URL") (eq $k "NEXTAUTH_SECRET") (eq $k "NEXT_PUBLIC_AUTH")) -}}
   {{- /* skip */ -}}
   {{- else }}
   {{ $k }}: {{ $v | quote }}
