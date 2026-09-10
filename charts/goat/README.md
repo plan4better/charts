@@ -231,11 +231,11 @@ override the key names via the `existingSecretUserKey` /
 | `core.enabled` | bool | `true` | Deploy `goat-core`. |
 | `core.replicaCount` | int | `1` | Replicas. |
 | `core.image.repository` | string | `plan4better/goat/core` | Image repository. |
-| `core.image.tag` | string | `""` | Image tag; empty = `.Chart.AppVersion`. |
+| `core.image.tag` | string | `""` | Image tag; empty = `.Chart.AppVersion` (the GOAT release the chart is pinned to). |
 | `core.auth.enabled` | bool | `false` | Enable OIDC/Keycloak validation (Phase 2+). |
 | `core.ingress.enabled` | bool | `false` | Create Ingress resource for core API. |
 | `core.ingress.className` | string | `""` | Ingress controller name (`nginx`, `traefik`, …). |
-| `core.config.*` | map | see values.yaml | Non-secret env vars (rendered as ConfigMap). |
+| `core.config.*` | map | see values.yaml | Non-secret env vars (rendered as ConfigMap). `S3_FORCE_PATH_STYLE=true` selects path-style addressing for any S3-compatible store; `MAX_UPLOAD_DATASET_FILE_SIZE` caps browser uploads (bytes, default 5 GB). Both must also be in the Windmill workers' `WHITELIST_ENVS`. |
 | `web.enabled` | bool | `true` | Deploy `goat-web` (Next.js frontend). |
 | `web.auth.enabled` | bool | `false` | Enable OIDC/Keycloak for the web frontend (Phase 2+). |
 | `web.ingress.enabled` | bool | `false` | Create Ingress for the web UI (requires `hosts` populated). |

@@ -409,7 +409,7 @@ windmill:
     image:
       registry: ghcr.io
       repository: plan4better/goat/windmill-worker-tools
-      tag: latest
+      tag: ""                       # "" = .Chart.AppVersion
       pullPolicy: IfNotPresent
 
   server:
@@ -418,7 +418,7 @@ windmill:
     image:
       registry: ghcr.io
       repository: plan4better/goat/windmill-server
-      tag: latest
+      tag: ""                       # "" = .Chart.AppVersion
       pullPolicy: IfNotPresent
     config:
       MODE: "server"
@@ -480,7 +480,7 @@ windmill:
   #         # Tell windmill which env vars to expose to user scripts. Without
   #         # WHITELIST_ENVS, scripts see an empty environment regardless of
   #         # what's set on the worker pod.
-  #         WHITELIST_ENVS: "POSTGRES_SERVER,POSTGRES_PORT,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,S3_PROVIDER,S3_ENDPOINT_URL,S3_PUBLIC_ENDPOINT_URL,S3_REGION,S3_BUCKET_NAME,S3_ACCESS_KEY_ID,S3_SECRET_ACCESS_KEY,DUCKLAKE_CATALOG_SCHEMA,DUCKLAKE_DATA_DIR,CUSTOMER_SCHEMA"
+  #         WHITELIST_ENVS: "POSTGRES_SERVER,POSTGRES_PORT,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,S3_PROVIDER,S3_FORCE_PATH_STYLE,S3_ENDPOINT_URL,S3_PUBLIC_ENDPOINT_URL,S3_REGION,S3_BUCKET_NAME,S3_ACCESS_KEY_ID,S3_SECRET_ACCESS_KEY,MAX_UPLOAD_DATASET_FILE_SIZE,DUCKLAKE_CATALOG_SCHEMA,DUCKLAKE_DATA_DIR,CUSTOMER_SCHEMA"
   #         # Non-sensitive goatlib config goes here (configmap envFrom).
   #         POSTGRES_SERVER: "central-db.cc-loc-database-stack.svc.cluster.local"
   #         POSTGRES_DB: "goat"
@@ -508,7 +508,7 @@ windmill:
       image:
         registry: ghcr.io
         repository: plan4better/goat/windmill-worker-default
-        tag: latest
+        tag: ""                       # "" = .Chart.AppVersion
         pullPolicy: IfNotPresent
       config:
         MODE: "worker"
@@ -530,7 +530,7 @@ windmill:
       image:
         registry: ghcr.io
         repository: plan4better/goat/windmill-worker-print
-        tag: latest
+        tag: ""                       # "" = .Chart.AppVersion
         pullPolicy: IfNotPresent
       config:
         MODE: "worker"
@@ -555,7 +555,7 @@ windmill:
       image:
         registry: ghcr.io
         repository: plan4better/goat/windmill-worker-tools
-        tag: latest
+        tag: ""                       # "" = .Chart.AppVersion
         pullPolicy: IfNotPresent
       config:
         MODE: "worker"
@@ -590,7 +590,7 @@ windmill:
       image:
         registry: ghcr.io
         repository: plan4better/goat/windmill-worker-tools     # SAME image as tools, different group/tags
-        tag: latest
+        tag: ""                       # "" = .Chart.AppVersion
         pullPolicy: IfNotPresent
       config:
         MODE: "worker"
