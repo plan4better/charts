@@ -57,6 +57,13 @@ core:
   # Static, non-secret env vars (rendered into a ConfigMap in Task 6)
   config:
     ENVIRONMENT: prod
+    # Trust X-Forwarded-Proto/-Host/-For from the ingress. TLS usually ends at
+    # the ingress, so without this uvicorn only trusts 127.0.0.1, sees plain
+    # http, and builds redirects (and geoapi's OGC links) as http:// on an
+    # https site. "*" is safe when the pod is reachable only through the
+    # ingress and the cluster network; narrow it to the ingress controller's
+    # pod CIDR if other clients can reach the pod directly.
+    FORWARDED_ALLOW_IPS: "*"
     REGION_MAPPING_PT_TABLE: "basic.region_mapping_pt_04022025"
     JOB_TIMEOUT_DEFAULT: "500"
     CRUD_NUM_RETRIES: "40"
@@ -309,6 +316,19 @@ geoapi:
     pullPolicy: IfNotPresent
   config:
     ENVIRONMENT: prod
+    # Trust X-Forwarded-Proto/-Host/-For from the ingress. TLS usually ends at
+    # the ingress, so without this uvicorn only trusts 127.0.0.1, sees plain
+    # http, and builds redirects (and geoapi's OGC links) as http:// on an
+    # https site. "*" is safe when the pod is reachable only through the
+    # ingress and the cluster network; narrow it to the ingress controller's
+    # pod CIDR if other clients can reach the pod directly.
+    FORWARDED_ALLOW_IPS: "*"
+    # Path prefix when this service sits behind a path-routing gateway on a
+    # shared host (e.g. "/geoapi"). Needs GOAT >= v3.0.3. The service then builds its
+    # OGC/STAC self/next/collection links and docs URLs with the prefix; the
+    # gateway may strip the prefix or pass it through. Leave unset when the
+    # service has its own host.
+    # ROOT_PATH: "/geoapi"
     # Same boot-safe placeholders as core (boto3 PartialCredentialsError otherwise)
 
     AWS_REGION: "us-east-1"
@@ -383,6 +403,19 @@ processes:
     pullPolicy: IfNotPresent
   config:
     ENVIRONMENT: prod
+    # Trust X-Forwarded-Proto/-Host/-For from the ingress. TLS usually ends at
+    # the ingress, so without this uvicorn only trusts 127.0.0.1, sees plain
+    # http, and builds redirects (and geoapi's OGC links) as http:// on an
+    # https site. "*" is safe when the pod is reachable only through the
+    # ingress and the cluster network; narrow it to the ingress controller's
+    # pod CIDR if other clients can reach the pod directly.
+    FORWARDED_ALLOW_IPS: "*"
+    # Path prefix when this service sits behind a path-routing gateway on a
+    # shared host (e.g. "/processes"). Needs GOAT >= v3.0.3. The service then builds its
+    # OGC/STAC self/next/collection links and docs URLs with the prefix; the
+    # gateway may strip the prefix or pass it through. Leave unset when the
+    # service has its own host.
+    # ROOT_PATH: "/processes"
     AWS_REGION: "us-east-1"
 
     S3_PROVIDER: "minio"
@@ -450,6 +483,19 @@ catalog:
     pullPolicy: IfNotPresent
   config:
     ENVIRONMENT: prod
+    # Trust X-Forwarded-Proto/-Host/-For from the ingress. TLS usually ends at
+    # the ingress, so without this uvicorn only trusts 127.0.0.1, sees plain
+    # http, and builds redirects (and geoapi's OGC links) as http:// on an
+    # https site. "*" is safe when the pod is reachable only through the
+    # ingress and the cluster network; narrow it to the ingress controller's
+    # pod CIDR if other clients can reach the pod directly.
+    FORWARDED_ALLOW_IPS: "*"
+    # Path prefix when this service sits behind a path-routing gateway on a
+    # shared host (e.g. "/catalog"). Needs GOAT >= v3.0.3. The service then builds its
+    # OGC/STAC self/next/collection links and docs URLs with the prefix; the
+    # gateway may strip the prefix or pass it through. Leave unset when the
+    # service has its own host.
+    # ROOT_PATH: "/catalog"
     # Bound DuckDB's working set. Unset, DuckDB helps itself to 80% of node RAM
     # and a heavy concurrent moment OOM-kills the pod instead of spilling.
     CATALOG_DUCKDB_MEMORY_LIMIT: "2GB"
