@@ -73,13 +73,14 @@ spec:
             release. WINDMILL_URL points at the in-cluster Service;
             WINDMILL_WORKSPACE matches what the bootstrap hook creates;
             WINDMILL_TOKEN is the API token the bootstrap hook writes to a
-            K8s Secret (optional:true so processes pods come up before
-            the post-install hook finishes on first deploy — they get the
-            token via env var on the next reconcile / restart).
+            K8s Secret (optional:true: on a fresh install processes is up
+            before that post-install hook runs, so the hook restarts this
+            Deployment once it has written a new token — see
+            windmill/bootstrap-script-configmap.yaml).
             Disable with `processes.windmillAutoWire: false` if you wire
             these yourself via `processes.extraEnv`.
             */}}
-            {{- if and .Values.windmill.server.enabled (default true .Values.processes.windmillAutoWire) }}
+            {{- if include "goat.processes.windmillAutoWire" . }}
             - name: WINDMILL_URL
               value: "http://{{ include "goat.fullname" . }}-windmill-server"
             - name: WINDMILL_WORKSPACE

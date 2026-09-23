@@ -681,8 +681,9 @@ windmill:
 
 
   # Post-install bootstrap: creates the workspace, rotates the default
-  # superadmin password, and mints an API token that downstream services
-  # (e.g. `processes`) consume via secretKeyRef on `windmill-token`.
+  # superadmin password, and keeps (or mints) the API token that `processes`
+  # consumes via secretKeyRef on `windmill-token` — restarting processes
+  # when the token is new, since its pods read it at start.
   bootstrap:
     enabled: true
     # Workspace that the bootstrap creates; same name `processes` expects via

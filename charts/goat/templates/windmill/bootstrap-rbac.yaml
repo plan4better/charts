@@ -2,7 +2,8 @@
 The bootstrap Job writes the windmill API token to a K8s Secret via the
 in-cluster API. It needs a ServiceAccount with permission to create/patch
 Secrets in the release namespace. Scoped to just the token Secret name to
-keep the blast radius minimal.
+keep the blast radius minimal. When it hands the token to processes it also
+reads and patches (restarts) that one Deployment.
 */}}
 {{- if and .Values.windmill.server.enabled .Values.windmill.bootstrap.enabled -}}
 {{- $saName := printf "%s-windmill-bootstrap" (include "goat.fullname" .) -}}
@@ -33,6 +34,12 @@ rules:
     resources: ["secrets"]
     resourceNames: [{{ $tokenSecret | quote }}]
     verbs: ["get", "patch", "update"]
+  {{- if include "goat.windmill.bootstrapWiresProcesses" . }}
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: [{{ include "goat.serviceFullname" (dict "context" . "component" "processes") | quote }}]
+    verbs: ["get", "patch"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

@@ -128,6 +128,29 @@ true
 {{- end }}
 
 {{/*
+Whether the chart wires processes to the bundled windmill server
+(WINDMILL_URL/WORKSPACE, plus the bootstrap token). Off with
+`processes.windmillAutoWire: false`. Compared as a string because Sprig's
+`default true` treats an explicit false as empty and turned it back on.
+*/}}
+{{- define "goat.processes.windmillAutoWire" -}}
+{{- if and .Values.processes.enabled .Values.windmill.server.enabled (ne (toString .Values.processes.windmillAutoWire) "false") -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Whether the windmill bootstrap hook hands its token to processes: it then
+restarts the processes Deployment whenever the token changes, since the pods
+read it from an env var at start.
+*/}}
+{{- define "goat.windmill.bootstrapWiresProcesses" -}}
+{{- if and .Values.windmill.bootstrap.enabled (include "goat.processes.windmillAutoWire" .) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
 Shared data volume — claim name. Honors data.existingClaim.
 */}}
 {{- define "goat.data.claimName" -}}

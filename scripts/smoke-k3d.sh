@@ -49,6 +49,22 @@ helm install "$RELEASE" "$CHART_DIR" \
 echo "==> Rendered NOTES.txt"
 helm get notes "$RELEASE" --namespace "$NS"
 
+# On a fresh install the windmill bootstrap hook restarts processes once it
+# has minted the token (processes came up before the hook, without it). Let
+# that rollout finish first, including the old pod's shutdown: `rollout
+# status` returns once the new pod is available, and `wait pod --all` below
+# then fails with NotFound on the old pod as it disappears (seen for real).
+PROCESSES_DEPLOY=$(kubectl -n "$NS" get deploy -l app.kubernetes.io/component=processes \
+  -o jsonpath='{.items[0].metadata.name}')
+echo "==> Waiting for the $PROCESSES_DEPLOY rollout"
+kubectl -n "$NS" rollout status "deploy/$PROCESSES_DEPLOY" --timeout=10m
+TERMINATING=$(kubectl -n "$NS" get pod \
+  -o jsonpath='{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.name}{" "}{end}')
+if [ -n "$TERMINATING" ]; then
+  # shellcheck disable=SC2086 # one argument per pod name
+  kubectl -n "$NS" wait --for=delete pod $TERMINATING --timeout=5m
+fi
+
 echo "==> Waiting for all pods Ready"
 kubectl -n "$NS" wait --for=condition=Ready pod --all --timeout=10m
 
@@ -105,35 +121,68 @@ check geoapi    8000 /healthz
 check processes 8000 /healthz
 check catalog   8400 /healthz
 
-echo "==> Asserting processes serves a user-scoped route without a token (auth off)"
-# Regression guard for chart 0.5.0: the chart set no AUTH for geoapi and
-# processes, so their code default (AUTH on) applied while core/web ran auth
-# off. With no login there is no token, and every route that needs a user
-# (processes' get_user_id: running tools, listing jobs; geoapi's feature
-# writes) answered 401. The smoke values leave auth off, so GET /jobs
-# (list_jobs, Depends(get_user_id)) without a token must reach the handler
-# and act as the default user. 401 means AUTH is on again. Any other status
-# is outside this check's scope (e.g. a 500 from Windmill is not auth).
-PROCESSES_POD=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=processes \
-  -o jsonpath='{.items[0].metadata.name}')
-if [ -z "$PROCESSES_POD" ]; then
-  echo "FAIL: no pod found for component=processes"
-  exit 1
-fi
-JOBS_CODE=$(kubectl -n "$NS" exec "$PROCESSES_POD" -- python -c "
+echo "==> Asserting processes lists jobs without a token (auth off, windmill token wired)"
+# Two chart 0.5.0 regressions end at this one call, GET /jobs
+# (list_jobs: Depends(get_user_id), then a windmill query):
+#   - 401: the chart set no AUTH for geoapi and processes, so their code
+#     default (AUTH on) applied while core/web ran auth off. With no login
+#     there is no token, and every route that needs a user answered 401.
+#   - 500: processes reads WINDMILL_TOKEN from the bootstrap hook's Secret at
+#     pod start, but on a fresh install the pod starts before that
+#     post-install hook runs, and nothing restarted it: every windmill call
+#     (tool runs, job listing) failed until a manual restart.
+# The smoke values leave auth off, so this must be a plain 200.
+jobs_code() {
+  local pod
+  pod=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=processes \
+    --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+  if [ -z "$pod" ]; then
+    echo "FAIL: no running pod found for component=processes" >&2
+    return 1
+  fi
+  kubectl -n "$NS" exec "$pod" -- python -c "
 import sys, urllib.request, urllib.error
 try:
     code = urllib.request.urlopen('http://127.0.0.1:8000/jobs', timeout=30).status
 except urllib.error.HTTPError as e:
     code = e.code
 sys.stdout.write(str(code))
-") || JOBS_CODE=""
-if [ -z "$JOBS_CODE" ] || [ "$JOBS_CODE" = "401" ]; then
-  echo "FAIL: processes GET /jobs without a token returned '${JOBS_CODE}' — expected anything but 401 with auth off"
-  kubectl -n "$NS" exec "$PROCESSES_POD" -- printenv AUTH || true
+"
+}
+dump_processes() {
+  local pod
+  pod=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=processes \
+    -o jsonpath='{.items[0].metadata.name}')
+  kubectl -n "$NS" exec "$pod" -- printenv AUTH || true
+  kubectl -n "$NS" exec "$pod" -- sh -c 'echo "WINDMILL_TOKEN length: ${#WINDMILL_TOKEN}"' || true
+  kubectl -n "$NS" logs "$pod" --tail=30 || true
+}
+JOBS_CODE=$(jobs_code) || JOBS_CODE=""
+if [ "$JOBS_CODE" != "200" ]; then
+  echo "FAIL: processes GET /jobs without a token returned '${JOBS_CODE}', expected 200 (401 = AUTH on again, 500 = no windmill token)"
+  dump_processes
   exit 1
 fi
-echo "    processes /jobs (no token) -> $JOBS_CODE (not 401)"
+echo "    processes /jobs (no token) -> 200"
+
+# The pod template carries the fingerprint of the Secret's token — what the
+# hook compares to decide on a restart (the 200 above shows the pods have it).
+TOKEN_SECRET="$RELEASE-windmill-token"
+case "$RELEASE" in *goat*) ;; *) TOKEN_SECRET="$RELEASE-goat-windmill-token" ;; esac
+token_fp() {
+  kubectl -n "$NS" get secret "$TOKEN_SECRET" -o jsonpath='{.data.token}' \
+    | base64 -d | sha256sum | cut -c1-16
+}
+template_fp() {
+  kubectl -n "$NS" get deploy "$PROCESSES_DEPLOY" \
+    -o jsonpath='{.spec.template.metadata.annotations.goat\.plan4better\.de/windmill-token-sha256}'
+}
+TOKEN_FP=$(token_fp)
+if [ -z "$TOKEN_FP" ] || [ "$(template_fp)" != "$TOKEN_FP" ]; then
+  echo "FAIL: $PROCESSES_DEPLOY pod template fingerprint '$(template_fp)' != token Secret '$TOKEN_FP'"
+  exit 1
+fi
+echo "    $PROCESSES_DEPLOY runs with the Secret's token ($TOKEN_FP)"
 
 echo "==> Asserting the web bundle has no unresolved APP_NEXT_PUBLIC_*_URL sentinel"
 # web has no readiness/liveness probe (Next.js has no bare health endpoint),
@@ -200,6 +249,32 @@ if [ -z "$CATALOG_POD" ]; then
 fi
 kubectl -n "$NS" exec "$CATALOG_POD" -- \
   python -c "import urllib.request,json;d=json.load(urllib.request.urlopen('http://127.0.0.1:8400/stac',timeout=10));assert d.get('type')=='Catalog',d;print('    STAC root OK')"
+
+echo "==> helm upgrade: the bootstrap hook reuses the token and leaves processes alone"
+# Before 0.5.1 every post-upgrade hook minted another non-expiring token (and
+# never revoked the old one); now it keeps the stored token while windmill
+# accepts it, so an upgrade with unchanged values neither rotates the token
+# nor restarts processes.
+PODS_BEFORE=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=processes \
+  -o jsonpath='{.items[*].metadata.name}')
+helm upgrade "$RELEASE" "$CHART_DIR" --namespace "$NS" -f "$VALUES" --wait --timeout 15m >/dev/null
+if [ "$(token_fp)" != "$TOKEN_FP" ]; then
+  echo "FAIL: helm upgrade rotated the windmill token ($TOKEN_FP -> $(token_fp))"
+  exit 1
+fi
+PODS_AFTER=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=processes \
+  -o jsonpath='{.items[*].metadata.name}')
+if [ "$PODS_AFTER" != "$PODS_BEFORE" ]; then
+  echo "FAIL: helm upgrade restarted processes ($PODS_BEFORE -> $PODS_AFTER)"
+  exit 1
+fi
+JOBS_CODE=$(jobs_code) || JOBS_CODE=""
+if [ "$JOBS_CODE" != "200" ]; then
+  echo "FAIL: processes GET /jobs returned '${JOBS_CODE}' after the upgrade, expected 200"
+  dump_processes
+  exit 1
+fi
+echo "    token kept ($TOKEN_FP), processes not restarted, /jobs -> 200"
 
 echo "==> Asserting the legacy worker-PVC upgrade guard fires against a live claim"
 # 0.4.x per-worker claims are deleted by `helm upgrade` unless the LIVE

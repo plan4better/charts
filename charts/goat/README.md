@@ -199,29 +199,25 @@ server is up and:
   named in `windmill.bootstrap.adminPasswordSecret`
 - creates the `windmill.bootstrap.workspace` workspace (default `goat`)
   if missing
-- mints a non-expiring API token and writes it to K8s Secret
-  `<release>-windmill-token` (`token` key)
+- keeps the token already stored in K8s Secret `<release>-windmill-token`
+  (`token` key) while windmill still accepts it; otherwise mints a
+  non-expiring API token and writes it there
+- restarts the `processes` Deployment when its pods don't have that token
+  yet (tracked by the pod-template annotation
+  `goat.plan4better.de/windmill-token-sha256`, a fingerprint of the token)
+
+`processes` gets `WINDMILL_URL`, `WINDMILL_WORKSPACE` and `WINDMILL_TOKEN`
+(from that Secret) automatically. It reads the token at pod start, and on a
+fresh install its pods are up before this hook runs — hence the restart. An
+upgrade that keeps the token restarts nothing. Set
+`processes.windmillAutoWire: false` to wire these yourself through
+`processes.extraEnv` (e.g. against an external windmill); the hook then
+leaves `processes` alone.
 
 Hook RBAC is minimal — a release-namespace `Role` granting `create` on
-Secrets in the namespace, plus `get/patch/update` scoped to the token
-Secret's name only.
-
-To plug `processes` into the bootstrapped token, set:
-
-```yaml
-processes:
-  extraEnv:
-    - name: WINDMILL_URL
-      value: "http://{{ include \"goat.fullname\" . }}-windmill-server"
-    - name: WINDMILL_WORKSPACE
-      value: "goat"
-    - name: WINDMILL_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: "{{ include \"goat.fullname\" . }}-windmill-token"
-          key: token
-          optional: true
-```
+Secrets in the namespace, `get/patch/update` scoped to the token Secret's
+name, and `get/patch` on the `processes` Deployment only (omitted with
+`processes.windmillAutoWire: false`).
 
 Set `windmill.bootstrap.enabled: false` if you bootstrap windmill out-of-band
 (e.g. via your own provisioning pipeline) — the hook then doesn't run.
@@ -672,7 +668,7 @@ helm template my-release charts/goat/ -f charts/goat/ci/values-external-deps.yam
 
 | Chart version | Adds | Notes |
 |---|---|---|
-| `0.5.1` | `global.auth`: one auth switch + one Keycloak Secret for core, web, geoapi, processes, catalog; `geoapi.auth` / `processes.auth` | Fixes: geoapi + processes ran auth ON at chart defaults (401 on feature edits and every job route) and, with auth on, validated tokens against plan4better's dev Keycloak. No values change needed — see "Upgrading 0.5.0 → 0.5.1" |
+| `0.5.1` | `global.auth`: one auth switch + one Keycloak Secret for core, web, geoapi, processes, catalog; `geoapi.auth` / `processes.auth` | Fixes: geoapi + processes ran auth ON at chart defaults (401 on feature edits and every job route) and, with auth on, validated tokens against plan4better's dev Keycloak; a fresh install's processes had no windmill token (every tool run failed until a manual restart); `processes.windmillAutoWire: false` was ignored. No values change needed — see "Upgrading 0.5.0 → 0.5.1" |
 | `0.5.0` | GOAT v3.0.2: `catalog` service (STAC API + MCP); shared `data` volume; single-command fresh install (DuckLake + windmill DB bootstrap moved from hooks to init containers); `REDIS_URL`, web `NEXT_PUBLIC_*` and windmill `WHITELIST_ENVS` fixes; bundled Postgres image moves from CNPG's default major 17 to 18 (`ghcr.io/cloudnative-pg/postgis:18-3.6-system-trixie`) | BREAKING: `helm upgrade` DELETES `<fullname>-windmill-tools-data` and `<fullname>-windmill-workflows-data` unless you first `kubectl annotate` them `helm.sh/resource-policy=keep` (worker `persistence` superseded by `data`, no automatic migration; the upgrade fails until you do or set `windmill.workers.legacyPersistence.acknowledgeDeletion` — see upgrade note 1 below); geoapi + processes now default on |
 | `0.4.0` | automatic schema migrations (`core.migrate.*` hook); `NEXT_PUBLIC_AUTH_DISABLED` → `NEXT_PUBLIC_AUTH` | BREAKING: flip the web auth flag in your values |
 | `0.2.0` | windmill (server + 4 workers), caddy (custom-domains) | Both off by default for opt-in; one knob each to enable |
@@ -719,6 +715,20 @@ changes on the pods:
    the catalog wired to a Secret, `catalog.config.KEYCLOAK_SERVER_URL` now
    wins over the Secret instead of being shadowed by it. The catalog also gets
    `REALM_NAME` from `core.config.REALM_NAME` when set and no Secret is.
+6. **processes gets its windmill token on a fresh install.** processes reads
+   `WINDMILL_TOKEN` from the bootstrap hook's Secret at pod start, but the
+   hook runs after `helm install --wait` has brought processes up, and
+   nothing restarted it: on 0.5.0 every tool run and job listing failed
+   (500) until processes was restarted by hand. The hook now restarts the
+   processes Deployment whenever the token is new to it, and keeps the stored
+   token while windmill accepts it — 0.5.0 minted another non-expiring token
+   on every upgrade (old ones stay valid; revoke them in windmill's user
+   settings if you like, label `goat-chart-bootstrap`). The first upgrade to
+   0.5.1 restarts processes once more after the upgrade itself, when the hook
+   stamps the token fingerprint annotation for the first time.
+7. **`processes.windmillAutoWire: false` works.** It was ignored (the chart
+   always injected `WINDMILL_URL`/`WINDMILL_WORKSPACE`/`WINDMILL_TOKEN`); with
+   it, processes now gets none of them and the hook leaves processes alone.
 
 ### Upgrading 0.4.x → 0.5.0
 
