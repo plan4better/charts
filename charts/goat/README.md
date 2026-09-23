@@ -597,8 +597,10 @@ The chart targets any conformant Kubernetes cluster:
 ## Development
 
 ```sh
-# install helm-unittest plugin
-helm plugin install https://github.com/helm-unittest/helm-unittest
+# install helm-unittest plugin — same version CI pins (.github/workflows/ci.yml).
+# The tests use `kubernetesProvider` and `failedTemplate.errorPattern`, which
+# older plugin versions silently ignore; v1.x itself needs Helm >= 3.17.
+helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.1.0
 
 # run unit tests
 helm unittest charts/goat/
