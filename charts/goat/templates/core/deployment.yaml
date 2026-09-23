@@ -64,31 +64,26 @@ spec:
                 secretKeyRef:
                   name: {{ include "goat.postgresql.secretName" . }}
                   key: {{ include "goat.postgresql.passwordKey" . }}
-            {{- if and .Values.core.auth.enabled .Values.core.auth.existingSecret }}
-            # OIDC env from existingSecret — overrides any placeholder values
-            # in core.config when core.auth.enabled is true.
+            {{- $auth := dict "values" .Values.core "root" $ }}
+            {{- if include "goat.auth.wired" $auth }}
+            {{- $secret := include "goat.auth.secretName" $auth }}
+            # OIDC env from the Keycloak Secret (core.auth / global.auth) —
+            # replaces the Keycloak placeholders in core.config (the ConfigMap
+            # drops them). A key set in core.extraEnv is left to extraEnv; AUTH
+            # set in core.config / core.extraEnv is left to that value.
+            {{- if not (include "goat.env.userSet" (dict "values" .Values.core "key" "AUTH")) }}
             - name: AUTH
               value: "true"
-            - name: KEYCLOAK_SERVER_URL
+            {{- end }}
+            {{- range $pair := list (list "KEYCLOAK_SERVER_URL" "serverUrl") (list "REALM_NAME" "realm") (list "KEYCLOAK_CLIENT_ID" "clientId") (list "KEYCLOAK_CLIENT_SECRET" "clientSecret") }}
+            {{- if not (include "goat.env.inExtraEnv" (dict "values" $.Values.core "key" (index $pair 0))) }}
+            - name: {{ index $pair 0 }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.core.auth.existingSecret }}
-                  key: {{ .Values.core.auth.existingSecretKeys.serverUrl }}
-            - name: REALM_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.core.auth.existingSecret }}
-                  key: {{ .Values.core.auth.existingSecretKeys.realm }}
-            - name: KEYCLOAK_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.core.auth.existingSecret }}
-                  key: {{ .Values.core.auth.existingSecretKeys.clientId }}
-            - name: KEYCLOAK_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.core.auth.existingSecret }}
-                  key: {{ .Values.core.auth.existingSecretKeys.clientSecret }}
+                  name: {{ $secret }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" (index $pair 1)) $auth) }}
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- with .Values.core.extraEnv }}
             {{- toYaml . | nindent 12 }}

@@ -78,6 +78,11 @@ spec:
             {{- end }}
             - name: REDIS_URL
               value: {{ include "goat.redis.url" . | quote }}
+            {{- /* AUTH is always set explicitly: the geoapi code defaults to AUTH on,
+                   against plan4better's own Keycloak. When auth is on, the
+                   Keycloak URL + realm come from the Secret, else from
+                   core.config. See goat.auth.backendEnv. */}}
+            {{- include "goat.auth.backendEnv" (dict "values" .Values.geoapi "root" $ "fallback" true) | trim | nindent 12 }}
             {{- with .Values.geoapi.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

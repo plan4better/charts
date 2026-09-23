@@ -93,6 +93,11 @@ spec:
                   optional: true
             {{- end }}
             {{- end }}
+            {{- /* AUTH is always set explicitly: the processes code defaults to AUTH on,
+                   against plan4better's own Keycloak. When auth is on, the
+                   Keycloak URL + realm come from the Secret, else from
+                   core.config. See goat.auth.backendEnv. */}}
+            {{- include "goat.auth.backendEnv" (dict "values" .Values.processes "root" $ "fallback" true) | trim | nindent 12 }}
             {{- with .Values.processes.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

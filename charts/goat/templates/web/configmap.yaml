@@ -1,5 +1,6 @@
 {{- if .Values.web.enabled -}}
-{{- $authWired := and .Values.web.auth.enabled .Values.web.auth.existingSecret -}}
+{{- $auth := dict "values" .Values.web "root" . -}}
+{{- $authWired := include "goat.auth.wired" $auth -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,8 +17,10 @@ data:
   {{ $k }}: {{ $v | quote }}
   {{- end }}
   {{- end }}
-  {{- if not $authWired }}
-  AUTH: {{ .Values.web.auth.enabled | toString | quote }}
+  {{- /* Wired: AUTH=true comes from the deployment env. Set explicitly in
+         web.config / web.extraEnv: that value is used as is. */}}
+  {{- if not (or $authWired (include "goat.env.userSet" (dict "values" .Values.web "key" "AUTH"))) }}
+  AUTH: {{ include "goat.auth.value" $auth | quote }}
   {{- end }}
   {{- $api := .Values.web.publicUrls.api | default (include "goat.ingressUrl" (dict "ingress" .Values.core.ingress)) }}
   {{- if $api }}

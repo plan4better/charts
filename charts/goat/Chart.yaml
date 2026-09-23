@@ -4,6 +4,29 @@ description: |
   Helm chart for GOAT (Geo Open Accessibility Tool) — a WebGIS platform for
   spatial analysis, accessibility modeling, and collaborative mapping.
 
+  v0.5.1:
+
+  - NEW: `global.auth` — ONE auth switch (`enabled`) and ONE Keycloak
+    Secret (`existingSecret` + `existingSecretKeys`) for core, web, geoapi,
+    processes and catalog. `<service>.auth.enabled` now defaults to null
+    (inherit); an explicit true/false, a per-service `existingSecret` or
+    key name still win, so 0.5.0 values files keep working unchanged.
+  - Fix: geoapi and processes got no AUTH from the chart, so their code
+    default (AUTH on) applied while core/web/catalog ran auth off. A bare
+    install could view maps but every feature edit (geoapi) and every job
+    route (processes: running tools, listing jobs) answered 401. Every
+    service now gets an explicit AUTH=true/false.
+  - Fix: geoapi and processes were never given the Keycloak URL or realm, so
+    an auth-on install validated tokens against the code default
+    (plan4better's own dev Keycloak) — rejecting every customer token and
+    calling out to it at pod start (fatal air-gapped). They now get
+    KEYCLOAK_SERVER_URL + REALM_NAME from the Keycloak Secret, or from
+    core.config when no Secret is set. New `geoapi.auth` / `processes.auth`.
+  - AUTH, KEYCLOAK_SERVER_URL or REALM_NAME set explicitly in
+    `<service>.config` or `<service>.extraEnv` win and are rendered exactly
+    once (the chart no longer emits a second copy — duplicate ConfigMap keys
+    before, e.g. `core.config.AUTH`, `catalog.config.KEYCLOAK_SERVER_URL`).
+
   v0.5.0:
 
   - Tracks GOAT v3.0.2. NEW: the `catalog` service (STAC API + MCP server)
@@ -106,7 +129,7 @@ description: |
     `NEXT_PUBLIC_AUTH` (inverted meaning), matching the upstream single
     AUTH switch.
 type: application
-version: 0.5.0
+version: 0.5.1
 appVersion: "v3.0.2"   # GOAT release every image defaults to; override per service with <service>.image.tag
 icon: https://goat.plan4better.de/favicon.ico
 home: https://github.com/plan4better/charts/tree/main/charts/goat

@@ -223,3 +223,162 @@ Usage: {{ include "goat.ingressUrl" (dict "ingress" .Values.core.ingress) }}
 {{- printf "%s://%s" $scheme (first $ing.hosts).host -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+──── Auth (OIDC / Keycloak) ────────────────────────────────────────────────
+One switch, `global.auth`, with per-service overrides under `<svc>.auth`.
+Every helper takes (dict "values" .Values.<svc> "root" $) so core, web,
+geoapi, processes and catalog all resolve the same way.
+
+Inheritance, per field:
+  enabled            <svc>.auth.enabled if it is true/false; unset or null
+                     inherits global.auth.enabled. NOT `default`: `default
+                     true false` is true, so an explicit false would be lost.
+  existingSecret     <svc>.auth.existingSecret if non-empty, else global's.
+  existingSecretKeys per key: <svc>.auth.existingSecretKeys.<k>, else
+                     global.auth.existingSecretKeys.<k>, else the built-in
+                     name (server-url, realm, client-id, client-secret,
+                     nextauth-secret).
+*/}}
+
+{{/*
+Effective auth switch. Renders "true" or "" (use with `eq ... "true"` or as
+a truthy string).
+*/}}
+{{- define "goat.auth.enabled" -}}
+{{- $a := .values.auth | default dict -}}
+{{- $g := .root.Values.global.auth | default dict -}}
+{{- if and (hasKey $a "enabled") (not (kindIs "invalid" $a.enabled)) -}}
+{{- if $a.enabled -}}true{{- end -}}
+{{- else if $g.enabled -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Effective Keycloak Secret name ("" when none is configured).
+*/}}
+{{- define "goat.auth.secretName" -}}
+{{- $a := .values.auth | default dict -}}
+{{- $g := .root.Values.global.auth | default dict -}}
+{{- $a.existingSecret | default $g.existingSecret | default "" -}}
+{{- end }}
+
+{{/*
+Auth is on AND a Secret is configured: the service reads its Keycloak
+settings from that Secret. Renders "true" or "".
+*/}}
+{{- define "goat.auth.wired" -}}
+{{- if and (include "goat.auth.enabled" .) (include "goat.auth.secretName" .) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Effective key name inside the Secret. Extra param: key (serverUrl | realm |
+clientId | clientSecret | nextauthSecret).
+*/}}
+{{- define "goat.auth.secretKey" -}}
+{{- $a := .values.auth | default dict -}}
+{{- $g := .root.Values.global.auth | default dict -}}
+{{- $sk := $a.existingSecretKeys | default dict -}}
+{{- $gk := $g.existingSecretKeys | default dict -}}
+{{- $builtin := dict "serverUrl" "server-url" "realm" "realm" "clientId" "client-id" "clientSecret" "client-secret" "nextauthSecret" "nextauth-secret" -}}
+{{- index $sk .key | default (index $gk .key) | default (index $builtin .key) -}}
+{{- end }}
+
+{{/*
+The AUTH value a service gets: "true" or "false", never empty — no service
+may fall back to its code default (geoapi/processes default to AUTH on).
+*/}}
+{{- define "goat.auth.value" -}}
+{{- ternary "true" "false" (eq (include "goat.auth.enabled" .) "true") -}}
+{{- end }}
+
+{{/*
+Whether the operator already set env var `key` for this service in
+`<svc>.extraEnv`. Renders "true" or "". Params: values, key.
+*/}}
+{{- define "goat.env.inExtraEnv" -}}
+{{- $found := false -}}
+{{- range (.values.extraEnv | default list) -}}
+{{- if and (kindIs "map" .) (eq (toString .name) $.key) -}}
+{{- $found = true -}}
+{{- end -}}
+{{- end -}}
+{{- if $found -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Whether the operator set env var `key` explicitly, in `<svc>.config` or
+`<svc>.extraEnv`. An explicitly set key wins: the chart then emits it
+nowhere else, so it is rendered exactly once (a duplicate ConfigMap key
+breaks yaml.v3 parsers; an env entry would silently shadow the ConfigMap).
+Renders "true" or "". Params: values, key.
+*/}}
+{{- define "goat.env.userSet" -}}
+{{- $cfg := .values.config | default dict -}}
+{{- if or (hasKey $cfg .key) (include "goat.env.inExtraEnv" .) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Auth env for the Python API services that validate tokens themselves and
+ship no Keycloak placeholders in their `config` (geoapi, processes,
+catalog). Renders `env:` list entries (indent with nindent):
+  - AUTH, always "true"/"false" (never the code default);
+  - when wired to a Secret: KEYCLOAK_SERVER_URL and REALM_NAME via
+    secretKeyRef;
+  - when `fallback` is true, auth is on and no Secret is configured:
+    KEYCLOAK_SERVER_URL / REALM_NAME as plain values from
+    core.config.KEYCLOAK_SERVER_URL / core.config.REALM_NAME, when set.
+Each entry is skipped when the operator set that key in `<svc>.config` or
+`<svc>.extraEnv` (see goat.env.userSet).
+Params: values, root, fallback (bool).
+*/}}
+{{- define "goat.auth.backendEnv" -}}
+{{- $ctx := dict "values" .values "root" .root -}}
+{{- $wired := include "goat.auth.wired" $ctx -}}
+{{- $secret := include "goat.auth.secretName" $ctx -}}
+{{- $coreCfg := .root.Values.core.config | default dict -}}
+{{- if not (include "goat.env.userSet" (dict "values" .values "key" "AUTH")) }}
+- name: AUTH
+  value: {{ include "goat.auth.value" $ctx | quote }}
+{{- end }}
+{{- range $pair := list (list "KEYCLOAK_SERVER_URL" "serverUrl") (list "REALM_NAME" "realm") }}
+{{- $name := index $pair 0 }}
+{{- if not (include "goat.env.userSet" (dict "values" $.values "key" $name)) }}
+{{- if $wired }}
+- name: {{ $name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret }}
+      key: {{ include "goat.auth.secretKey" (merge (dict "key" (index $pair 1)) $ctx) }}
+{{- else if and $.fallback (include "goat.auth.enabled" $ctx) (index $coreCfg $name) }}
+- name: {{ $name }}
+  value: {{ index $coreCfg $name | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+The AUTH value a service's container ends up with, including an operator's
+explicit AUTH in `<svc>.config` or `<svc>.extraEnv` (lowercased; "custom"
+for an extraEnv valueFrom). For the mixed-auth warning in NOTES.txt.
+Params: values, root.
+*/}}
+{{- define "goat.auth.effectiveValue" -}}
+{{- $cfg := .values.config | default dict -}}
+{{- $v := include "goat.auth.value" . -}}
+{{- if hasKey $cfg "AUTH" -}}
+{{- $v = toString (index $cfg "AUTH") | lower -}}
+{{- end -}}
+{{- range (.values.extraEnv | default list) -}}
+{{- if and (kindIs "map" .) (eq (toString .name) "AUTH") -}}
+{{- $v = ternary (toString .value | lower) "custom" (hasKey . "value") -}}
+{{- end -}}
+{{- end -}}
+{{- $v -}}
+{{- end }}

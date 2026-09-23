@@ -54,9 +54,13 @@ spec:
             - configMapRef:
                 name: {{ include "goat.serviceFullname" $ctx }}
           env:
-            {{- if and .Values.web.auth.enabled .Values.web.auth.existingSecret }}
+            {{- $auth := dict "values" .Values.web "root" $ }}
+            {{- if include "goat.auth.wired" $auth }}
+            {{- $secret := include "goat.auth.secretName" $auth }}
+            {{- if not (include "goat.env.userSet" (dict "values" .Values.web "key" "AUTH")) }}
             - name: AUTH
               value: "true"
+            {{- end }}
             - name: NEXT_PUBLIC_AUTH
               value: "true"
             # The web app reads issuer & client-id from NEXT_PUBLIC_* env vars
@@ -70,30 +74,30 @@ spec:
             - name: KEYCLOAK_SERVER_URL_RAW
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.web.auth.existingSecret }}
-                  key: {{ .Values.web.auth.existingSecretKeys.serverUrl }}
+                  name: {{ $secret }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" "serverUrl") $auth) }}
             - name: REALM_NAME_RAW
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.web.auth.existingSecret }}
-                  key: {{ .Values.web.auth.existingSecretKeys.realm }}
+                  name: {{ $secret }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" "realm") $auth) }}
             - name: NEXT_PUBLIC_KEYCLOAK_ISSUER
               value: $(KEYCLOAK_SERVER_URL_RAW)/realms/$(REALM_NAME_RAW)
             - name: NEXT_PUBLIC_KEYCLOAK_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.web.auth.existingSecret }}
-                  key: {{ .Values.web.auth.existingSecretKeys.clientId }}
+                  name: {{ $secret }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" "clientId") $auth) }}
             - name: KEYCLOAK_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.web.auth.existingSecret }}
-                  key: {{ .Values.web.auth.existingSecretKeys.clientSecret }}
+                  name: {{ $secret }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" "clientSecret") $auth) }}
             - name: NEXTAUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.web.auth.existingSecret }}
-                  key: {{ .Values.web.auth.existingSecretKeys.nextauthSecret }}
+                  name: {{ $secret }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" "nextauthSecret") $auth) }}
             {{- with .Values.web.auth.publicUrl }}
             - name: NEXTAUTH_URL
               value: {{ . | quote }}

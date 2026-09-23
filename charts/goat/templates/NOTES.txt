@@ -91,3 +91,21 @@ bucket is configured but no credentials were supplied via
 catalog.s3.existingSecret, so previews and assets will fail unless
 credentials are provided through catalog.extraEnv.
 {{- end }}
+{{- $authOn := list }}
+{{- $authOff := list }}
+{{- range $svc := list "core" "web" "geoapi" "processes" "catalog" }}
+{{- $vals := index $.Values $svc }}
+{{- if $vals.enabled }}
+{{- $v := include "goat.auth.effectiveValue" (dict "values" $vals "root" $) }}
+{{- if eq $v "true" }}{{ $authOn = append $authOn $svc }}{{ else if eq $v "false" }}{{ $authOff = append $authOff $svc }}{{ end }}
+{{- end }}
+{{- end }}
+{{- if and $authOn $authOff }}
+
+WARNING: mixed authentication. AUTH is ON for {{ join ", " $authOn }} but OFF
+for {{ join ", " $authOff }}. A service with AUTH off accepts requests without
+a token and acts as the default user; with web off and an API on, the browser
+sends no token and that API answers 401. Use one switch, global.auth.enabled
+(plus global.auth.existingSecret), unless the split is deliberate. See README
+"Authentication".
+{{- end }}

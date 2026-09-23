@@ -105,6 +105,36 @@ check geoapi    8000 /healthz
 check processes 8000 /healthz
 check catalog   8400 /healthz
 
+echo "==> Asserting processes serves a user-scoped route without a token (auth off)"
+# Regression guard for chart 0.5.0: the chart set no AUTH for geoapi and
+# processes, so their code default (AUTH on) applied while core/web ran auth
+# off. With no login there is no token, and every route that needs a user
+# (processes' get_user_id: running tools, listing jobs; geoapi's feature
+# writes) answered 401. The smoke values leave auth off, so GET /jobs
+# (list_jobs, Depends(get_user_id)) without a token must reach the handler
+# and act as the default user. 401 means AUTH is on again. Any other status
+# is outside this check's scope (e.g. a 500 from Windmill is not auth).
+PROCESSES_POD=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=processes \
+  -o jsonpath='{.items[0].metadata.name}')
+if [ -z "$PROCESSES_POD" ]; then
+  echo "FAIL: no pod found for component=processes"
+  exit 1
+fi
+JOBS_CODE=$(kubectl -n "$NS" exec "$PROCESSES_POD" -- python -c "
+import sys, urllib.request, urllib.error
+try:
+    code = urllib.request.urlopen('http://127.0.0.1:8000/jobs', timeout=30).status
+except urllib.error.HTTPError as e:
+    code = e.code
+sys.stdout.write(str(code))
+") || JOBS_CODE=""
+if [ -z "$JOBS_CODE" ] || [ "$JOBS_CODE" = "401" ]; then
+  echo "FAIL: processes GET /jobs without a token returned '${JOBS_CODE}' — expected anything but 401 with auth off"
+  kubectl -n "$NS" exec "$PROCESSES_POD" -- printenv AUTH || true
+  exit 1
+fi
+echo "    processes /jobs (no token) -> $JOBS_CODE (not 401)"
+
 echo "==> Asserting the web bundle has no unresolved APP_NEXT_PUBLIC_*_URL sentinel"
 # web has no readiness/liveness probe (Next.js has no bare health endpoint),
 # so `check` above can't cover it — precisely the blind spot that let a bare

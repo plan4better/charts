@@ -21,6 +21,53 @@ global:
   security:
     allowInsecureImages: true
 
+  # ── Authentication (OIDC / Keycloak) — ONE switch for the whole release ──
+  # core, web, geoapi, processes and catalog all follow `global.auth.enabled`
+  # unless their own `<service>.auth.enabled` says otherwise. Every service
+  # always gets an explicit AUTH=true/false; none falls back to its code
+  # default (geoapi and processes default to AUTH on, against plan4better's
+  # own Keycloak — chart 0.5.0 left them there while the rest ran auth off).
+  #
+  # Off (default): every service runs without login. core seeds a default
+  # user/organization and the others act as that user. Fine for a
+  # single-tenant evaluation install; put it behind your own access control.
+  #
+  # On, with `existingSecret` (recommended): the chart reads Keycloak from
+  # that K8s Secret (release namespace) via secretKeyRef:
+  #   core      AUTH=true, KEYCLOAK_SERVER_URL, REALM_NAME, KEYCLOAK_CLIENT_ID,
+  #             KEYCLOAK_CLIENT_SECRET
+  #   web       AUTH=true, NEXT_PUBLIC_AUTH=true, NEXT_PUBLIC_KEYCLOAK_ISSUER
+  #             (built from server-url + realm), NEXT_PUBLIC_KEYCLOAK_CLIENT_ID,
+  #             KEYCLOAK_CLIENT_SECRET, NEXTAUTH_SECRET
+  #   geoapi, processes, catalog
+  #             AUTH=true, KEYCLOAK_SERVER_URL, REALM_NAME
+  #
+  # On, without a Secret: AUTH=true only. geoapi and processes (and the
+  # catalog, on or off) take KEYCLOAK_SERVER_URL / REALM_NAME from
+  # core.config.KEYCLOAK_SERVER_URL / core.config.REALM_NAME when set; core
+  # and web keep whatever their `config` holds (placeholders by default).
+  #
+  # Per-service overrides: `<service>.auth.enabled: true|false` beats this
+  # switch, `<service>.auth.existingSecret` beats `existingSecret`, and each
+  # `<service>.auth.existingSecretKeys.<key>` beats the one here. A key set
+  # explicitly in `<service>.config` or `<service>.extraEnv` (AUTH,
+  # KEYCLOAK_SERVER_URL, REALM_NAME) beats all of it — the chart then renders
+  # that key nowhere else. The one exception: the Keycloak PLACEHOLDERS that
+  # core.config and web.config ship by default are replaced by the Secret
+  # whenever that service is wired to one (as in 0.5.0).
+  auth:
+    enabled: false
+    existingSecret: ""
+    # Key names inside the Secret. Only the keys a service reads need to
+    # exist: geoapi/processes/catalog read serverUrl + realm; core adds
+    # clientId + clientSecret; web adds nextauthSecret.
+    existingSecretKeys:
+      serverUrl: server-url          # e.g. https://idm.example.com (no /realms/...)
+      realm: realm                   # e.g. goat
+      clientId: client-id            # e.g. goat-web (core token validation + web login)
+      clientSecret: client-secret    # the Keycloak-generated client secret
+      nextauthSecret: nextauth-secret  # NextAuth.js signing key (web only)
+
 # ─── Shared data volume ────────────────────────────────────────────────────
 # ONE volume, mounted by seven components. The windmill tools and workflows
 # workers WRITE to it (the catalog mirror via sync_catalog, the geoip database
@@ -122,24 +169,15 @@ core:
   extraVolumes: []
   extraVolumeMounts: []
 
-  # OIDC/Keycloak integration. When enabled, the core service expects a K8s
-  # Secret (named via `existingSecret`) containing the Keycloak server URL,
-  # realm name, client ID, and client secret. The civitas-goat-addon
-  # provisions this automatically in civitas-core deployments.
+  # OIDC/Keycloak — per-service override of `global.auth` (see there). Leave
+  # everything unset to follow the global switch. When wired to a Secret,
+  # core reads server-url, realm, client-id and client-secret from it and the
+  # Keycloak placeholders above are dropped from the ConfigMap. The
+  # civitas-goat-addon provisions this Secret in civitas-core deployments.
   auth:
-    enabled: false
-    # K8s Secret in the release namespace. Required when `enabled: true`.
-    # Expected keys (override key names below if you used different keys):
-    #   server-url    e.g. https://idm.civitas.test
-    #   realm         e.g. cc-loc
-    #   client-id     e.g. goat-web (used by both core token validation + web login)
-    #   client-secret the Keycloak-generated secret for the client
-    existingSecret: ""
-    existingSecretKeys:
-      serverUrl: server-url
-      realm: realm
-      clientId: client-id
-      clientSecret: client-secret
+    enabled: null                  # null = global.auth.enabled; true/false overrides it
+    existingSecret: ""             # "" = global.auth.existingSecret
+    existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
 
   # Schema migrations + SQL function/trigger install, run as a Helm hook
   # (post-install for the fresh-install bootstrap, pre-upgrade so migrations
@@ -256,17 +294,14 @@ web:
   # Keycloak certs via NODE_EXTRA_CA_CERTS).
   extraVolumes: []
   extraVolumeMounts: []
+  # OIDC/Keycloak — per-service override of `global.auth` (see there). When
+  # wired to a Secret, web reads server-url, realm, client-id, client-secret
+  # and nextauth-secret (a NextAuth.js signing key; the civitas addon generates
+  # one per release) from it, replacing the placeholders in web.config.
   auth:
-    enabled: false
-    existingSecret: ""
-    existingSecretKeys:
-      serverUrl: server-url
-      realm: realm
-      clientId: client-id
-      clientSecret: client-secret
-      # web (NextAuth.js) also needs a NEXTAUTH_SECRET signing key in the
-      # same Secret. The addon generates one randomly per release.
-      nextauthSecret: nextauth-secret
+    enabled: null                  # null = global.auth.enabled; true/false overrides it
+    existingSecret: ""             # "" = global.auth.existingSecret
+    existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
     # NEXTAUTH_URL is the public URL of the web frontend (e.g. https://goat.civitas.test).
     # When set, overrides the placeholder in web.config.NEXTAUTH_URL.
     publicUrl: ""
@@ -353,6 +388,17 @@ geoapi:
       value: "placeholder-s3-key"
     - name: S3_SECRET_ACCESS_KEY
       value: "placeholder-s3-secret"
+  # OIDC/Keycloak — per-service override of `global.auth` (see there). NEW in
+  # 0.5.1: before, the chart set no AUTH here, so the geoapi code default
+  # (AUTH on, validating against plan4better's own dev Keycloak) applied.
+  # Wired to a Secret, geoapi reads server-url and realm from it; auth on
+  # without a Secret takes them from core.config.KEYCLOAK_SERVER_URL /
+  # core.config.REALM_NAME. AUTH, KEYCLOAK_SERVER_URL or REALM_NAME set in
+  # `geoapi.config` / `geoapi.extraEnv` win over all of this.
+  auth:
+    enabled: null                  # null = global.auth.enabled; true/false overrides it
+    existingSecret: ""             # "" = global.auth.existingSecret
+    existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
   # Mount extra volumes (e.g. CA bundles when Keycloak runs on a self-signed
   # cert and Python requests/httpx need to trust it via REQUESTS_CA_BUNDLE).
   extraVolumes: []
@@ -429,6 +475,17 @@ processes:
       value: "placeholder-s3-key"
     - name: S3_SECRET_ACCESS_KEY
       value: "placeholder-s3-secret"
+  # OIDC/Keycloak — per-service override of `global.auth` (see there). NEW in
+  # 0.5.1: before, the chart set no AUTH here, so the processes code default
+  # (AUTH on, validating against plan4better's own dev Keycloak) applied.
+  # Wired to a Secret, processes reads server-url and realm from it; auth on
+  # without a Secret takes them from core.config.KEYCLOAK_SERVER_URL /
+  # core.config.REALM_NAME. AUTH, KEYCLOAK_SERVER_URL or REALM_NAME set in
+  # `processes.config` / `processes.extraEnv` win over all of this.
+  auth:
+    enabled: null                  # null = global.auth.enabled; true/false overrides it
+    existingSecret: ""             # "" = global.auth.existingSecret
+    existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
   # When `windmill.server.enabled`, auto-inject WINDMILL_URL +
   # WINDMILL_WORKSPACE + WINDMILL_TOKEN (from the bootstrap-managed Secret)
   # into processes pods. Set to false to wire these yourself via
@@ -506,21 +563,21 @@ catalog:
     # you have one, e.g. '["catalog.goat.example.com"]'.
     CATALOG_MCP_ALLOWED_HOSTS: '["*"]'
 
-  # OIDC/Keycloak. Same shape as core.auth — the catalog reads the bare AUTH,
-  # KEYCLOAK_SERVER_URL and REALM_NAME variables (it accepts CATALOG_-prefixed
-  # overrides too, but the chart sets the bare names, as it does for core).
+  # OIDC/Keycloak — per-service override of `global.auth` (see there). The
+  # catalog reads the bare AUTH, KEYCLOAK_SERVER_URL and REALM_NAME variables
+  # (it accepts CATALOG_-prefixed overrides too, but the chart sets the bare
+  # names, as it does for core). Wired to a Secret, it reads server-url and
+  # realm from it.
   #
-  # Cross-component read: when auth.existingSecret is empty, the catalog
+  # Cross-component read: when no Secret is configured, the catalog
   # ConfigMap sources KEYCLOAK_SERVER_URL from `core.config.KEYCLOAK_SERVER_URL`
-  # instead (templates/catalog/configmap.yaml) — there is no
-  # catalog-specific server-url value in that case.
+  # (and REALM_NAME from `core.config.REALM_NAME`, when set) instead
+  # (templates/catalog/configmap.yaml). Set either in `catalog.config` to
+  # override it for the catalog alone.
   auth:
-    enabled: false
-    # K8s Secret in the release namespace. Required when `enabled: true`.
-    existingSecret: ""
-    existingSecretKeys:
-      serverUrl: server-url
-      realm: realm
+    enabled: null                  # null = global.auth.enabled; true/false overrides it
+    existingSecret: ""             # "" = global.auth.existingSecret
+    existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
 
 
   # Data previews (GET /stac/items/{id}/preview) and assets (thumbnails,

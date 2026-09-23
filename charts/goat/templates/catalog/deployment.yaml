@@ -54,23 +54,10 @@ spec:
             - configMapRef:
                 name: {{ include "goat.serviceFullname" $ctx }}
           env:
-            {{- if and .Values.catalog.auth.enabled .Values.catalog.auth.existingSecret }}
-            - name: AUTH
-              value: "true"
-            - name: KEYCLOAK_SERVER_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.catalog.auth.existingSecret }}
-                  key: {{ .Values.catalog.auth.existingSecretKeys.serverUrl }}
-            - name: REALM_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.catalog.auth.existingSecret }}
-                  key: {{ .Values.catalog.auth.existingSecretKeys.realm }}
-            {{- else }}
-            - name: AUTH
-              value: {{ .Values.catalog.auth.enabled | toString | quote }}
-            {{- end }}
+            {{- /* AUTH always set explicitly; KEYCLOAK_SERVER_URL + REALM_NAME from
+                   the Keycloak Secret when wired (the non-secret fallback lives
+                   in the ConfigMap). */}}
+            {{- include "goat.auth.backendEnv" (dict "values" .Values.catalog "root" $ "fallback" false) | trim | nindent 12 }}
             {{- if and .Values.catalog.s3.bucket .Values.catalog.s3.existingSecret }}
             - name: CATALOG_S3_ACCESS_KEY_ID
               valueFrom:

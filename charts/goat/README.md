@@ -2,7 +2,7 @@
 
 Helm chart for deploying GOAT (Geo Open Accessibility Tool) on Kubernetes.
 
-## Scope (v0.5.0)
+## Scope (v0.5.1)
 
 | Service | Default | Notes |
 |---|---|---|
@@ -19,7 +19,7 @@ Helm chart for deploying GOAT (Geo Open Accessibility Tool) on Kubernetes.
 
 ```sh
 helm install goat oci://ghcr.io/plan4better/charts/goat \
-  --version 0.5.0 \
+  --version 0.5.1 \
   --namespace goat --create-namespace \
   --values your-values.yaml
 ```
@@ -379,12 +379,14 @@ override the key names via the `existingSecretUserKey` /
 | `core.replicaCount` | int | `1` | Replicas. |
 | `core.image.repository` | string | `plan4better/goat/core` | Image repository. |
 | `core.image.tag` | string | `""` | Image tag; empty = `.Chart.AppVersion` (the GOAT release the chart is pinned to). |
-| `core.auth.enabled` | bool | `false` | Enable OIDC/Keycloak validation (Phase 2+). |
+| `global.auth.enabled` | bool | `false` | ONE auth switch for core, web, geoapi, processes and catalog (see "Authentication"). |
+| `global.auth.existingSecret` | string | `""` | ONE Keycloak Secret for every service; keys named by `global.auth.existingSecretKeys` (`server-url`, `realm`, `client-id`, `client-secret`, `nextauth-secret`). |
+| `<service>.auth.enabled` | bool/null | `null` | Per-service override for `core`, `web`, `geoapi`, `processes`, `catalog`; null inherits `global.auth.enabled`. |
+| `<service>.auth.existingSecret` / `.existingSecretKeys` | string / map | `""` / `{}` | Per-service Secret / key names; empty inherits `global.auth`. |
 | `core.ingress.enabled` | bool | `false` | Create Ingress resource for core API. |
 | `core.ingress.className` | string | `""` | Ingress controller name (`nginx`, `traefik`, …). |
 | `core.config.*` | map | see values.yaml | Non-secret env vars (rendered as ConfigMap). `S3_FORCE_PATH_STYLE=true` selects path-style addressing for any S3-compatible store; `MAX_UPLOAD_DATASET_FILE_SIZE` caps browser uploads (bytes, default 5 GB). Both must also be in the Windmill workers' `WHITELIST_ENVS`. |
 | `web.enabled` | bool | `true` | Deploy `goat-web` (Next.js frontend). |
-| `web.auth.enabled` | bool | `false` | Enable OIDC/Keycloak for the web frontend (Phase 2+). |
 | `web.ingress.enabled` | bool | `false` | Create Ingress for the web UI (requires `hosts` populated). |
 | `geoapi.enabled` | bool | `true` | Deploy `goat-geoapi`. Its `ducklake-init` init container creates the DuckLake catalog (see below). |
 | `processes.enabled` | bool | `true` | Deploy `goat-processes`. Same `ducklake-init` init container as geoapi. |
@@ -417,13 +419,70 @@ override the key names via the `existingSecretUserKey` /
 | `catalog.enabled` | bool | `true` | Deploy `goat-catalog` (STAC API + MCP server). |
 | `catalog.s3.bucket` | string | `""` | Catalog bucket for previews/assets; unset means those routes 404 by design. |
 | `catalog.config.CATALOG_MCP_ALLOWED_HOSTS` | string | `'["*"]'` | `/mcp` Host allow-list (DNS-rebinding protection); narrow once you have a real hostname. |
-| `catalog.auth.existingSecret` | string | `""` | OIDC secret with `server-url` + `realm` keys — a subset of `core.auth`'s shape; the same Secret can be reused. |
 | `web.publicUrls.api` / `.geoapi` / `.processes` / `.catalog` | string | `""` | Browser-facing service URLs; each is derived from that service's own ingress (scheme from its TLS, host from its first entry) when empty. |
 | `web.websiteUrl` | string | `""` | Home's blog + changelog feeds; the surfaces hide when empty. |
 | `redis.external.host` | string | `""` | External Redis host, used when `redis.enabled: false`. |
 | `redis.external.existingSecret` | string | `""` | Secret holding the external Redis password; omit for an unauthenticated Redis. |
 
 For the full schema see `values.yaml` and `values.schema.json`.
+
+## Authentication
+
+One switch, `global.auth`, drives all five services that check logins —
+core, web, geoapi, processes and catalog. Each one always gets an explicit
+`AUTH=true|false` from the chart; none is left on its code default.
+
+```yaml
+global:
+  auth:
+    enabled: true
+    existingSecret: goat-keycloak      # one Secret for every service
+    existingSecretKeys:                # the defaults; rename if your Secret differs
+      serverUrl: server-url            # https://idm.example.com (no /realms/...)
+      realm: realm
+      clientId: client-id
+      clientSecret: client-secret
+      nextauthSecret: nextauth-secret  # NextAuth.js signing key (web)
+```
+
+What each service reads from that Secret (by `secretKeyRef`):
+
+| Service | Env from the Secret |
+|---|---|
+| core | `AUTH=true`, `KEYCLOAK_SERVER_URL`, `REALM_NAME`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` |
+| web | `AUTH=true`, `NEXT_PUBLIC_AUTH=true`, `NEXT_PUBLIC_KEYCLOAK_ISSUER` (server-url + realm), `NEXT_PUBLIC_KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, `NEXTAUTH_SECRET` |
+| geoapi, processes, catalog | `AUTH=true`, `KEYCLOAK_SERVER_URL`, `REALM_NAME` |
+
+With `enabled: true` and no Secret, services get `AUTH=true` only. geoapi and
+processes then take `KEYCLOAK_SERVER_URL` / `REALM_NAME` from
+`core.config.KEYCLOAK_SERVER_URL` / `core.config.REALM_NAME` (the catalog does
+the same, whether auth is on or off); core and web keep what their `config`
+holds. Set real values there — the shipped `core.config.KEYCLOAK_SERVER_URL`
+is a placeholder.
+
+With `enabled: false` (the default) nothing needs a Keycloak: core seeds a
+default user and organization and every service acts as that user. Put such an
+install behind your own access control.
+
+**Precedence**, highest first:
+
+1. **`<service>.config` / `<service>.extraEnv`.** `AUTH`, `KEYCLOAK_SERVER_URL`
+   or `REALM_NAME` set there is used as is, and the chart renders that key
+   nowhere else for that service — never twice, and never as a Secret-backed
+   env var that would silently shadow your ConfigMap value (Kubernetes gives
+   `env` precedence over `envFrom`). One exception, kept from 0.5.0: the
+   Keycloak *placeholders* that `core.config` and `web.config` ship by default
+   (`KEYCLOAK_SERVER_URL`, `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_*`,
+   `NEXTAUTH_*`, `NEXT_PUBLIC_AUTH`) are replaced by the Secret whenever that
+   service is wired to one.
+2. **`<service>.auth`**: `enabled: true|false` beats the global switch (null or
+   unset inherits it), a non-empty `existingSecret` beats the global one, and
+   each `existingSecretKeys.<key>` beats the global key name.
+3. **`global.auth`.**
+
+Examples: `global.auth.enabled: true` with `geoapi.auth.enabled: false` runs
+everything but geoapi with auth; `processes.auth.existingSecret:
+processes-kc` points processes alone at another Secret.
 
 ## The shared data volume
 
@@ -613,10 +672,53 @@ helm template my-release charts/goat/ -f charts/goat/ci/values-external-deps.yam
 
 | Chart version | Adds | Notes |
 |---|---|---|
+| `0.5.1` | `global.auth`: one auth switch + one Keycloak Secret for core, web, geoapi, processes, catalog; `geoapi.auth` / `processes.auth` | Fixes: geoapi + processes ran auth ON at chart defaults (401 on feature edits and every job route) and, with auth on, validated tokens against plan4better's dev Keycloak. No values change needed — see "Upgrading 0.5.0 → 0.5.1" |
 | `0.5.0` | GOAT v3.0.2: `catalog` service (STAC API + MCP); shared `data` volume; single-command fresh install (DuckLake + windmill DB bootstrap moved from hooks to init containers); `REDIS_URL`, web `NEXT_PUBLIC_*` and windmill `WHITELIST_ENVS` fixes; bundled Postgres image moves from CNPG's default major 17 to 18 (`ghcr.io/cloudnative-pg/postgis:18-3.6-system-trixie`) | BREAKING: `helm upgrade` DELETES `<fullname>-windmill-tools-data` and `<fullname>-windmill-workflows-data` unless you first `kubectl annotate` them `helm.sh/resource-policy=keep` (worker `persistence` superseded by `data`, no automatic migration; the upgrade fails until you do or set `windmill.workers.legacyPersistence.acknowledgeDeletion` — see upgrade note 1 below); geoapi + processes now default on |
 | `0.4.0` | automatic schema migrations (`core.migrate.*` hook); `NEXT_PUBLIC_AUTH_DISABLED` → `NEXT_PUBLIC_AUTH` | BREAKING: flip the web auth flag in your values |
 | `0.2.0` | windmill (server + 4 workers), caddy (custom-domains) | Both off by default for opt-in; one knob each to enable |
 | `0.1.0` | initial — core, web, geoapi, processes templates | First public release |
+
+### Upgrading 0.5.0 → 0.5.1
+
+No values change is required; explicit per-service values keep working. What
+changes on the pods:
+
+1. **geoapi and processes now get an explicit `AUTH`.** 0.5.0 set none for
+   them, so their code default applied: AUTH **on**, while core, web and
+   catalog ran with it off at chart defaults. With web auth off there is no
+   login and no token, so on a bare install maps displayed (geoapi's read
+   routes accept anonymous requests) but saving feature edits and every
+   processes route that needs a user — running tools, listing jobs — answered
+   401. At chart defaults they now get `AUTH=false`, like the rest. If you
+   depended on them enforcing auth while core ran without, set
+   `geoapi.auth.enabled: true` / `processes.auth.enabled: true` (plus a
+   Keycloak Secret) explicitly.
+2. **geoapi and processes now get the Keycloak URL and realm.** 0.5.0 never
+   passed them, so an auth-on install validated tokens against the code
+   default — plan4better's own development Keycloak — rejecting every token
+   from your Keycloak and calling out to it at pod start (fatal air-gapped).
+   They now read `KEYCLOAK_SERVER_URL` / `REALM_NAME` from the Keycloak Secret
+   (`global.auth.existingSecret` or `<service>.auth.existingSecret`), or from
+   `core.config` when no Secret is set.
+3. **Hand-set values win.** If you worked around (2) by setting `AUTH`,
+   `KEYCLOAK_SERVER_URL` and `REALM_NAME` in `geoapi.config` /
+   `processes.config` (the civitas addon does), those values are kept and
+   rendered once; the chart adds nothing for those keys. You can drop them in
+   favour of `global.auth` when convenient.
+4. **`<service>.auth.enabled` defaults to null** (inherit `global.auth.enabled`,
+   default `false`) instead of `false`, and `<service>.auth.existingSecretKeys`
+   to `{}` (inherit `global.auth.existingSecretKeys`, same key names as
+   before). An explicit `true`/`false` behaves exactly as in 0.5.0. To keep a
+   0.5.0-style values file with one Secret per service, change nothing; to
+   simplify, replace the per-service blocks with one `global.auth`.
+5. **No duplicate keys.** `core.config.AUTH`, `web.config.AUTH` and
+   `catalog.config.KEYCLOAK_SERVER_URL` used to be rendered twice in the
+   ConfigMap (yours plus the chart's). Yours now wins alone. Likewise, with
+   core wired to a Secret, a Keycloak key you set in `core.extraEnv` is no
+   longer also emitted from the Secret (your value won before too). And with
+   the catalog wired to a Secret, `catalog.config.KEYCLOAK_SERVER_URL` now
+   wins over the Secret instead of being shadowed by it. The catalog also gets
+   `REALM_NAME` from `core.config.REALM_NAME` when set and no Secret is.
 
 ### Upgrading 0.4.x → 0.5.0
 
