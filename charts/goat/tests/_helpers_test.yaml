@@ -78,7 +78,7 @@ tests:
           path: spec.template.spec.containers[0].image
           value: "harbor.internal/plan4better/goat/core:2.5.0"
 
-  - it: default image tag follows appVersion v3.0.2
+  - it: default image tag follows appVersion v3.0.3
     template: core/deployment.yaml
     set:
       core.enabled: true
@@ -87,4 +87,4 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/plan4better/goat/core:v3.0.2
+          value: ghcr.io/plan4better/goat/core:v3.0.3

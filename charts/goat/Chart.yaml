@@ -6,6 +6,11 @@ description: |
 
   v0.5.1:
 
+  - Tracks GOAT v3.0.3: the Windmill workers ship the Python runtimes
+    Windmill needs, so nothing is downloaded at runtime (air-gapped installs
+    work); geoapi, processes and catalog can be served under a path prefix
+    (`<service>.config.ROOT_PATH`); new `sync_base_data` task for the
+    routing and public-transport base data.
   - NEW: `global.auth` — ONE auth switch (`enabled`) and ONE Keycloak
     Secret (`existingSecret` + `existingSecretKeys`) for core, web, geoapi,
     processes and catalog. `<service>.auth.enabled` now defaults to null
@@ -26,6 +31,15 @@ description: |
     `<service>.config` or `<service>.extraEnv` win and are rendered exactly
     once (the chart no longer emits a second copy — duplicate ConfigMap keys
     before, e.g. `core.config.AUTH`, `catalog.config.KEYCLOAK_SERVER_URL`).
+  - Fix: on a fresh install processes had no Windmill token (its pods start
+    before the post-install bootstrap hook writes it, and nothing restarted
+    them), so every tool run and job listing failed until a manual restart.
+    The hook now restarts processes when the token is new and keeps a valid
+    token instead of minting one per upgrade.
+  - Fix: `processes.windmillAutoWire: false` was ignored.
+  - core, geoapi, processes and catalog trust forwarded headers from the
+    ingress (`FORWARDED_ALLOW_IPS: "*"`), so redirects and OGC links use
+    https behind a TLS-terminating ingress.
 
   v0.5.0:
 
@@ -130,7 +144,7 @@ description: |
     AUTH switch.
 type: application
 version: 0.5.1
-appVersion: "v3.0.2"   # GOAT release every image defaults to; override per service with <service>.image.tag
+appVersion: "v3.0.3"   # GOAT release every image defaults to; override per service with <service>.image.tag
 icon: https://goat.plan4better.de/favicon.ico
 home: https://github.com/plan4better/charts/tree/main/charts/goat
 sources:
