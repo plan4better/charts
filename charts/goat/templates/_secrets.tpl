@@ -143,3 +143,66 @@ Resolution precedence (most-specific wins):
 {{- default "windmill" .Values.windmill.db.external.database -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Redis — host. Bundled sub-chart service is <release>-redis-master.
+*/}}
+{{- define "goat.redis.host" -}}
+{{- if .Values.redis.enabled -}}
+{{- printf "%s-redis-master" .Release.Name -}}
+{{- else -}}
+{{- required "redis.external.host is required when redis.enabled is false" .Values.redis.external.host -}}
+{{- end -}}
+{{- end }}
+
+{{- define "goat.redis.port" -}}
+{{- if .Values.redis.enabled -}}6379{{- else -}}{{- .Values.redis.external.port -}}{{- end -}}
+{{- end }}
+
+{{- define "goat.redis.database" -}}
+{{- if .Values.redis.enabled -}}0{{- else -}}{{- .Values.redis.external.database -}}{{- end -}}
+{{- end }}
+
+{{/*
+Redis — whether a password is in play at all.
+*/}}
+{{- define "goat.redis.authEnabled" -}}
+{{- if .Values.redis.enabled -}}
+{{- if .Values.redis.auth.enabled -}}true{{- end -}}
+{{- else -}}
+{{- if .Values.redis.external.existingSecret -}}true{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Redis — the Secret holding the password. The bitnami sub-chart creates
+<release>-redis with the key `redis-password`.
+*/}}
+{{- define "goat.redis.secretName" -}}
+{{- if .Values.redis.enabled -}}
+{{- printf "%s-redis" .Release.Name -}}
+{{- else -}}
+{{- .Values.redis.external.existingSecret -}}
+{{- end -}}
+{{- end }}
+
+{{- define "goat.redis.passwordKey" -}}
+{{- if .Values.redis.enabled -}}
+redis-password
+{{- else -}}
+{{- .Values.redis.external.existingSecretPasswordKey -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Redis — the URL itself. When a password is in play this emits a $(REDIS_PASSWORD)
+reference, so the caller MUST emit a REDIS_PASSWORD env var BEFORE this one:
+Kubernetes only substitutes $(VAR) against variables defined earlier in the list.
+*/}}
+{{- define "goat.redis.url" -}}
+{{- if include "goat.redis.authEnabled" . -}}
+{{- printf "redis://:$(REDIS_PASSWORD)@%s:%s/%s" (include "goat.redis.host" .) (include "goat.redis.port" .) (include "goat.redis.database" .) -}}
+{{- else -}}
+{{- printf "redis://%s:%s/%s" (include "goat.redis.host" .) (include "goat.redis.port" .) (include "goat.redis.database" .) -}}
+{{- end -}}
+{{- end }}

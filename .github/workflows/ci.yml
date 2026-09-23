@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'charts/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,10 +30,10 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v5.0.0
         with:
-          version: v3.16.4
+          version: v3.20.1
 
       - name: Install helm-unittest plugin
-        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.4
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.1.0
 
       - name: Install kubeconform
         run: |
@@ -78,3 +79,20 @@ jobs:
               -summary "$f"
             echo "::endgroup::"
           done
+
+  smoke:
+    # Manual only — it builds a cluster and pulls every GOAT image, which is far
+    # too slow for PR CI. Run before tagging a release.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v5.0.0
+        with:
+          version: v3.20.1
+      - name: Install k3d
+        run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+      - name: Smoke test
+        run: ./scripts/smoke-k3d.sh

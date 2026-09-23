@@ -38,6 +38,10 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if include "goat.windmillDbInit.enabled" . }}
+      initContainers:
+        {{- include "goat.windmillDbInit.container" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: windmill-server
           image: {{ include "goat.image" (dict "image" .Values.windmill.server.image "global" .Values.global "root" $) }}

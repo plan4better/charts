@@ -31,3 +31,46 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+  - it: mounts the shared data volume read-write and keeps extraVolumes
+    template: processes/deployment.yaml
+    set:
+      processes.enabled: true
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+      processes.extraVolumes:
+        - name: ca-bundle
+          configMap:
+            name: my-ca
+      processes.extraVolumeMounts:
+        - name: ca-bundle
+          mountPath: /etc/ssl/custom
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].name
+          value: goat-data
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /app/data
+      - notExists:
+          path: spec.template.spec.containers[0].volumeMounts[0].readOnly
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1].name
+          value: ca-bundle
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: goat-data
+      - equal:
+          path: spec.template.spec.volumes[1].name
+          value: ca-bundle
+  - it: mounts nothing when the data volume is disabled
+    template: processes/deployment.yaml
+    set:
+      processes.enabled: true
+      data.enabled: false
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - notExists:
+          path: spec.template.spec.volumes
+      - notExists:
+          path: spec.template.spec.containers[0].volumeMounts

@@ -1,8 +1,10 @@
 # /home/p4b/goat/charts/goat/values.yaml
 #
-# Ships templates for: core, web, geoapi, processes, windmill, caddy,
-# ducklake/postgresql bootstrap. Defaults: core+web enabled; the rest opt-in
-# (see comments above each block for why).
+# Ships templates for: core, web, catalog, geoapi, processes, windmill,
+# caddy, ducklake/postgresql bootstrap. Defaults: core, web, catalog, geoapi
+# and processes enabled (a bare install deploys the full data plane);
+# windmill and caddy remain opt-in (see comments above each block for why).
+
 
 # ─── Global ────────────────────────────────────────────────────────────────
 nameOverride: ""
@@ -18,6 +20,29 @@ global:
   # you can keep this true; it only relaxes the sub-chart's own image-check.
   security:
     allowInsecureImages: true
+
+# ─── Shared data volume ────────────────────────────────────────────────────
+# ONE volume, mounted by seven components. The windmill tools and workflows
+# workers WRITE to it (the catalog mirror via sync_catalog, the geoip database
+# via sync_geoip, materialized catalog layers and their PMTiles); catalog, core
+# and geoapi READ from it. Without a volume they all share, those features
+# silently do nothing — catalog serves an empty STAC, core skips the geoip
+# lookup, geoapi finds no materialized layers.
+#
+# ⚠ accessMode: on a MULTI-NODE cluster this must be ReadWriteMany, and your
+# cluster must have an RWX-capable StorageClass (NFS, CephFS, Longhorn RWX).
+# The default is ReadWriteOnce because it works out of the box on single-node
+# and default-StorageClass clusters; with RWX requested and no RWX storage
+# available the PVC sits Pending and `helm install --wait` hangs with no
+# obvious cause. Set it deliberately.
+data:
+  enabled: true
+  # Bring your own claim (e.g. a pre-provisioned NFS PVC). When set, the chart
+  # mounts it and creates no PVC of its own.
+  existingClaim: ""
+  accessMode: ReadWriteOnce
+  size: 200Gi
+  storageClassName: ""             # falls back to global.storageClass
 
 # ─── Core service ──────────────────────────────────────────────────────────
 core:
@@ -36,6 +61,11 @@ core:
     JOB_TIMEOUT_DEFAULT: "500"
     CRUD_NUM_RETRIES: "40"
     CRUD_RETRY_INTERVAL: "3"
+    # The two subtrees of the shared `data` volume core reads, and only reads.
+    # Defaults match the mount paths the chart sets up; change them only if you
+    # mount the volume somewhere else.
+    CATALOG_DATA_DIR: "/app/data/catalog"
+    GEOIP_DATA_DIR: "/app/data/geoip"
     # The GOAT core image initializes boto3 + several feature clients at boot
     # and crashes if these are missing. Placeholders here let the pod start;
     # override with real values for any features you actually use.
@@ -45,7 +75,6 @@ core:
     MAPBOX_TOKEN: "placeholder"
     KEYCLOAK_SERVER_URL: "http://placeholder-keycloak"
     GOAT_ROUTING_HOST: "http://placeholder-routing"
-    GOAT_GEOAPI_HOST: "http://placeholder-geoapi"
     R5_HOST: "http://placeholder-r5"
     R5_AUTHORIZATION: "placeholder"
     GOAT_ROUTING_AUTHORIZATION: "placeholder"
@@ -53,6 +82,19 @@ core:
     S3_ENDPOINT_URL: "http://placeholder-s3"
     S3_REGION: "us-east-1"
     S3_BUCKET_NAME: "goat-placeholder"
+    # Where new projects open, as a JSON object with InitialViewState's keys.
+    # Hosted GOAT leaves this unset and geolocates the creator — but on-prem
+    # users arrive from private addresses, which never geolocate, so set this
+    # to pin your deployment to its own region. ALL SEVEN fields are required
+    # (apps/core/src/core/schemas/project.py InitialViewState has no
+    # defaults) — an incomplete value fails validation and is silently
+    # IGNORED (only a log line, no startup error, new projects keep falling
+    # through to the world view). Example:
+    # DEFAULT_PROJECT_VIEW_STATE: '{"latitude":48.14,"longitude":11.57,"zoom":11,"min_zoom":0,"max_zoom":20,"bearing":0,"pitch":0}'
+    #
+    # Organization whose space owns the seeded GOAT layout starters. Empty
+    # falls back to the default user's personal space.
+    # GOAT_TEMPLATES_ORGANIZATION_ID: "<uuid>"
 
   # Arbitrary extra env (k:v list, passthrough). Default placeholders satisfy
   # boto3's "both key and secret required" check so the pod can start; replace
@@ -67,6 +109,11 @@ core:
       value: "placeholder-s3-key"
     - name: S3_SECRET_ACCESS_KEY
       value: "placeholder-s3-secret"
+
+  # Mount extra volumes alongside the chart-managed `data` volume (e.g. CA
+  # bundles). Both lists are appended to what the chart mounts, never replace it.
+  extraVolumes: []
+  extraVolumeMounts: []
 
   # OIDC/Keycloak integration. When enabled, the core service expects a K8s
   # Secret (named via `existingSecret`) containing the Keycloak server URL,
@@ -166,6 +213,37 @@ web:
     KEYCLOAK_CLIENT_ID: "goat-web"
     KEYCLOAK_CLIENT_SECRET: "placeholder"
     NEXT_PUBLIC_AUTH: "false"
+  # Browser-facing URLs, substituted into the client bundle by the image
+  # entrypoint. These are what the USER'S BROWSER calls, so cluster DNS will
+  # not do — they must be the public ingress URLs.
+  #
+  # Left empty, each is derived from that service's own ingress block (scheme
+  # from its TLS, host from its first entry). Set one here to override.
+  #
+  # IMPORTANT: if `api` stays empty AND core.ingress has no hosts, the web
+  # UI WILL NOT LOAD. The browser bundle is built with literal
+  # APP_NEXT_PUBLIC_* sentinels that the entrypoint only rewrites for
+  # variables it can resolve; an unresolved NEXT_PUBLIC_API_URL reaches
+  # client JS as that sentinel string, and `new URL(..., NEXT_PUBLIC_API_URL)`
+  # throws at module load, white-screening the app. Set at least `api` here,
+  # or give `core` an ingress with a host, before relying on this default.
+  publicUrls:
+
+    api: ""                        # NEXT_PUBLIC_API_URL      — core
+    geoapi: ""                     # NEXT_PUBLIC_GEOAPI_URL   — geoapi
+    processes: ""                  # NEXT_PUBLIC_PROCESSES_URL — processes
+    # NEXT_PUBLIC_CATALOG_URL. The app falls back to ${geoapi}/stac when unset,
+    # which is right when the catalog is path-routed behind the geoapi host.
+    # The chart gives catalog its own Service, so it sets this explicitly
+    # whenever catalog has an ingress of its own.
+    catalog: ""
+
+  # Home's blog strip, "What's new" popper and status card, all fetched by the
+  # browser. Every one of those surfaces stays hidden while these are empty,
+  # which is the right default for a self-hosted install: they point at
+  # plan4better's own feeds.
+  websiteUrl: ""                   # NEXT_PUBLIC_WEBSITE_URL
+  statusFeedUrl: ""                # NEXT_PUBLIC_STATUS_FEED_URL
   extraEnv: []
   # Mount extra volumes (e.g. CA bundles for NextAuth to trust self-signed
   # Keycloak certs via NODE_EXTRA_CA_CERTS).
@@ -215,11 +293,14 @@ web:
     targetCPUUtilizationPercentage: 80
 
 # ─── GeoAPI (geospatial API) ───────────────────────────────────────────────
-# Disabled by default: geoapi requires DuckLake metadata bootstrapped in the
-# postgres database before first start. Set `geoapi.config.DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"`
-# and `geoapi.enabled: true` to enable.
+# Enabled by default since chart 0.5.0. geoapi attaches the DuckLake catalog
+# READ-ONLY at startup and cannot start until it exists — GOAT has no
+# self-creating "DUCKLAKE_CREATE_IF_NOT_EXISTS" variable (that key does not
+# exist in GOAT; do not reintroduce it here). The `ducklake-init` init
+# container (`ducklakeBootstrap.enabled`, default on) creates it first — see
+# `ducklakeBootstrap` below.
 geoapi:
-  enabled: false
+  enabled: true
   replicaCount: 1
   image:
     registry: ghcr.io
@@ -228,10 +309,8 @@ geoapi:
     pullPolicy: IfNotPresent
   config:
     ENVIRONMENT: prod
-    # Required for first-time DuckLake bootstrap. Set false in production
-    # after the lake exists to enforce schema-stability.
-    DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"
     # Same boot-safe placeholders as core (boto3 PartialCredentialsError otherwise)
+
     AWS_REGION: "us-east-1"
     AWS_S3_ASSETS_BUCKET: "placeholder"
     MAPBOX_TOKEN: "placeholder"
@@ -239,6 +318,12 @@ geoapi:
     S3_ENDPOINT_URL: "http://placeholder-s3"
     S3_REGION: "us-east-1"
     S3_BUCKET_NAME: "goat-placeholder"
+    # Materialized catalog layers and their PMTiles, on the shared data volume.
+    CATALOG_LAYERS_DIR: "/app/data/catalog/layers"
+    CATALOG_TILES_DIR: "/app/data/catalog/tiles"
+    # Read-authorization gate for tile/feature/metadata endpoints. Shadow mode
+    # (false) only logs would-be denials; turn on once that log is quiet.
+    ENFORCE_READ_AUTHZ: "false"
   extraEnv:
     - name: AWS_ACCESS_KEY_ID
       value: "placeholder-aws-key"
@@ -282,11 +367,14 @@ geoapi:
     targetCPUUtilizationPercentage: 80
 
 # ─── Processes (OGC API Processes) ─────────────────────────────────────────
-# Disabled by default: processes shares DuckLake state with geoapi and has
-# the same bootstrap requirement. Set `processes.config.DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"`
-# and `processes.enabled: true` to enable.
+# Enabled by default since chart 0.5.0. processes attaches the DuckLake
+# catalog READ-ONLY at startup and cannot start until it exists — GOAT has
+# no self-creating "DUCKLAKE_CREATE_IF_NOT_EXISTS" variable (that key does
+# not exist in GOAT; do not reintroduce it here). The `ducklake-init` init
+# container (`ducklakeBootstrap.enabled`, default on) creates it first — see
+# `ducklakeBootstrap` below.
 processes:
-  enabled: false
+  enabled: true
   replicaCount: 1
   image:
     registry: ghcr.io
@@ -295,8 +383,8 @@ processes:
     pullPolicy: IfNotPresent
   config:
     ENVIRONMENT: prod
-    DUCKLAKE_CREATE_IF_NOT_EXISTS: "true"
     AWS_REGION: "us-east-1"
+
     S3_PROVIDER: "minio"
     S3_REGION: "us-east-1"
   extraEnv:
@@ -346,6 +434,115 @@ processes:
     maxReplicas: 5
     targetCPUUtilizationPercentage: 80
 
+# ─── Catalog (STAC API + MCP server) ───────────────────────────────────────
+# Database-less. Serves the catalog mirror from the shared `data` volume
+# (${DATA_DIR}/catalog/mirror_items.parquet + mirror_collections.parquet,
+# written by the goatlib sync_catalog task on the tools worker). With no mirror
+# present it serves an empty but valid STAC API, so it is safe to run before a
+# sync has ever happened.
+catalog:
+  enabled: true
+  replicaCount: 1
+  image:
+    registry: ghcr.io
+    repository: plan4better/goat/catalog
+    tag: ""                        # "" = .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  config:
+    ENVIRONMENT: prod
+    # Bound DuckDB's working set. Unset, DuckDB helps itself to 80% of node RAM
+    # and a heavy concurrent moment OOM-kills the pod instead of spilling.
+    CATALOG_DUCKDB_MEMORY_LIMIT: "2GB"
+    CATALOG_DUCKDB_THREADS: "4"
+    CATALOG_ENABLE_MCP: "true"
+    # Host header the /mcp Streamable HTTP transport accepts (DNS-rebinding
+    # protection). ["*"] disables the check; name your real ingress host once
+    # you have one, e.g. '["catalog.goat.example.com"]'.
+    CATALOG_MCP_ALLOWED_HOSTS: '["*"]'
+
+  # OIDC/Keycloak. Same shape as core.auth — the catalog reads the bare AUTH,
+  # KEYCLOAK_SERVER_URL and REALM_NAME variables (it accepts CATALOG_-prefixed
+  # overrides too, but the chart sets the bare names, as it does for core).
+  #
+  # Cross-component read: when auth.existingSecret is empty, the catalog
+  # ConfigMap sources KEYCLOAK_SERVER_URL from `core.config.KEYCLOAK_SERVER_URL`
+  # instead (templates/catalog/configmap.yaml) — there is no
+  # catalog-specific server-url value in that case.
+  auth:
+    enabled: false
+    # K8s Secret in the release namespace. Required when `enabled: true`.
+    existingSecret: ""
+    existingSecretKeys:
+      serverUrl: server-url
+      realm: realm
+
+
+  # Data previews (GET /stac/items/{id}/preview) and assets (thumbnails,
+  # styles) are the only routes that read the catalog bucket rather than the
+  # local mirror. Leave `bucket` unset and those routes answer 404 — by
+  # design: an endpoint this deployment does not offer simply is not there.
+  # The rest of the STAC API is unaffected.
+  #
+  # If you set `bucket` but leave `existingSecret` empty, the chart still
+  # emits CATALOG_S3_BUCKET/ENDPOINT_URL/REGION (so `catalog.extraEnv` can
+  # supply CATALOG_S3_ACCESS_KEY_ID/SECRET_ACCESS_KEY from your own
+  # secretKeyRef) but no credential env vars of its own — previews and assets
+  # will fail auth until credentials reach the pod one way or the other. The
+  # rendered NOTES.txt warns about this half-configured state.
+  s3:
+    bucket: ""
+    endpointUrl: ""
+    region: "us-east-1"
+    existingSecret: ""             # K8s Secret holding the two keys below
+    accessKeyIdKey: access_key
+    secretAccessKeyKey: secret_key
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8400
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 20
+    timeoutSeconds: 30
+    periodSeconds: 60
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 10
+    timeoutSeconds: 30
+    periodSeconds: 60
+    failureThreshold: 3
+    successThreshold: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
 # ─── Windmill (workflow automation) ────────────────────────────────────────
 windmill:
   # The windmill server hosts the workflow UI + API and queues jobs in postgres.
@@ -357,15 +554,20 @@ windmill:
   # safe default below is `false` — windmill uses its own database.
   #
   # When `postgresql.cluster.enabled: true` (chart-managed CNPG), the chart
-  # creates the windmill DB, the `windmill_owner_user`/`windmill_admin`/
-  # `windmill_user` roles, and a Secret for the connection password — no
-  # extra config needed.
+  # creates the windmill DB (init container, see `db` below), the
+  # `windmill_owner_user`/`windmill_admin`/`windmill_user` roles, and a Secret
+  # for the connection password — no extra config needed.
   #
   # When `postgresql.cluster.enabled: false` (external Postgres), fill
   # `db.external.*` AND ensure the windmill DB + roles exist beforehand. See
   # the chart README for the SQL you need to run.
   db:
     reuseGoatConnection: false
+    # With chart-managed CNPG (and reuseGoatConnection: false), the
+    # `windmill` database is created by a `windmill-db-init` init container
+    # on the windmill server and on every worker, running psql from
+    # `postgresql.cluster.image` — no hook, no extra image, no PyPI egress.
+    # See templates/_initcontainers.tpl.
     external:
       host: ""
       port: 5432
@@ -373,6 +575,7 @@ windmill:
       existingSecret: ""
       existingSecretUserKey: username
       existingSecretPasswordKey: password
+
 
   # Post-install bootstrap: creates the workspace, rotates the default
   # superadmin password, and mints an API token that downstream services
@@ -479,8 +682,10 @@ windmill:
   #         WORKER_TAGS: "tools"
   #         # Tell windmill which env vars to expose to user scripts. Without
   #         # WHITELIST_ENVS, scripts see an empty environment regardless of
-  #         # what's set on the worker pod.
-  #         WHITELIST_ENVS: "POSTGRES_SERVER,POSTGRES_PORT,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,S3_PROVIDER,S3_FORCE_PATH_STYLE,S3_ENDPOINT_URL,S3_PUBLIC_ENDPOINT_URL,S3_REGION,S3_BUCKET_NAME,S3_ACCESS_KEY_ID,S3_SECRET_ACCESS_KEY,MAX_UPLOAD_DATASET_FILE_SIZE,DUCKLAKE_CATALOG_SCHEMA,DUCKLAKE_DATA_DIR,CUSTOMER_SCHEMA"
+  #         # what's set on the worker pod. The chart ships a default covering
+  #         # every name goatlib tools need — see
+  #         # workers.tools.config.WHITELIST_ENVS below. Add to it rather than
+  #         # replacing it wholesale.
   #         # Non-sensitive goatlib config goes here (configmap envFrom).
   #         POSTGRES_SERVER: "central-db.cc-loc-database-stack.svc.cluster.local"
   #         POSTGRES_DB: "goat"
@@ -501,6 +706,18 @@ windmill:
   #           valueFrom:
   #             secretKeyRef: { name: minio-credentials, key: secret_key }
   workers:
+    # Upgrade guard for the 0.4.x per-worker PVCs (<fullname>-windmill-tools-data,
+    # <fullname>-windmill-workflows-data). At `data.enabled: true` this chart no
+    # longer renders them, so `helm upgrade` from 0.4.x DELETES them and their
+    # data unless the LIVE claim carries `helm.sh/resource-policy: keep`. While
+    # this is false, an upgrade that finds such a claim of this release in the
+    # namespace without that annotation FAILS and prints the `kubectl annotate`
+    # command that protects it (README "Upgrading 0.4.x -> 0.5.0" note 1).
+    # Set true only if you WANT Helm to delete those claims and their data.
+    # (Uses `lookup`, so `helm template` / client-side --dry-run never trip it.)
+    legacyPersistence:
+      acknowledgeDeletion: false
+
     # The "default" worker handles small, fast jobs.
     default:
       enabled: true
@@ -561,6 +778,10 @@ windmill:
         MODE: "worker"
         WORKER_GROUP: "tools"
         WORKER_TAGS: "tools"
+        # Windmill hands user scripts ONLY what this lists — without it they see
+        # an empty environment and every goatlib job fails. Matches the upstream
+        # compose list at v3.0.2. Add your own names rather than replacing it.
+        WHITELIST_ENVS: "MAX_UPLOAD_DATASET_FILE_SIZE,POSTGRES_SERVER,POSTGRES_PORT,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,POSTGRES_DATABASE_URI,DUCKLAKE_DATA_DIR,DUCKLAKE_CATALOG_SCHEMA,TILES_DATA_DIR,DATA_DIR,S3_PROVIDER,S3_FORCE_PATH_STYLE,S3_ENDPOINT_URL,S3_PUBLIC_ENDPOINT_URL,S3_ACCESS_KEY_ID,S3_SECRET_ACCESS_KEY,S3_BUCKET_NAME,S3_REGION,CATALOG_S3_BUCKET,CATALOG_S3_ENDPOINT_URL,CATALOG_S3_ACCESS_KEY_ID,CATALOG_S3_SECRET_ACCESS_KEY,CATALOG_S3_REGION,OD_MATRIX_BASE_PATH,STREET_NETWORK_EDGES_BASE_PATH,STREET_NETWORK_NODES_BASE_PATH,PT_NETWORK_BASE_PATH,GTFS_DATA_PATH,GEOCODING_URL,GEOCODING_AUTHORIZATION"
       extraEnv: []
       resources: {}
       podSecurityContext: {}
@@ -596,6 +817,8 @@ windmill:
         MODE: "worker"
         WORKER_GROUP: "workflows"
         WORKER_TAGS: "workflows"
+        # See workers.tools.config.WHITELIST_ENVS above — same default applies here.
+        WHITELIST_ENVS: "MAX_UPLOAD_DATASET_FILE_SIZE,POSTGRES_SERVER,POSTGRES_PORT,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,POSTGRES_DATABASE_URI,DUCKLAKE_DATA_DIR,DUCKLAKE_CATALOG_SCHEMA,TILES_DATA_DIR,DATA_DIR,S3_PROVIDER,S3_FORCE_PATH_STYLE,S3_ENDPOINT_URL,S3_PUBLIC_ENDPOINT_URL,S3_ACCESS_KEY_ID,S3_SECRET_ACCESS_KEY,S3_BUCKET_NAME,S3_REGION,CATALOG_S3_BUCKET,CATALOG_S3_ENDPOINT_URL,CATALOG_S3_ACCESS_KEY_ID,CATALOG_S3_SECRET_ACCESS_KEY,CATALOG_S3_REGION,OD_MATRIX_BASE_PATH,STREET_NETWORK_EDGES_BASE_PATH,STREET_NETWORK_NODES_BASE_PATH,PT_NETWORK_BASE_PATH,GTFS_DATA_PATH,GEOCODING_URL,GEOCODING_AUTHORIZATION"
       extraEnv: []
       resources: {}
       podSecurityContext: {}
@@ -680,45 +903,87 @@ caddy:
   podLabels: {}
 
 # ─── DuckLake catalog bootstrap ────────────────────────────────────────────
-# `geoapi` and `processes` attach to the DuckLake catalog in READ_ONLY mode;
-# DuckDB refuses if the catalog doesn't exist. This Job ATTACHes read-write
-# once (post-install hook) so subsequent reader pods find a populated
-# catalog. Off by default — operators bringing their own DuckLake or not
-# using geoapi/processes don't need it.
+# `geoapi` and `processes` attach the DuckLake catalog READ-ONLY; DuckDB
+# refuses if it doesn't exist yet. With `enabled: true` (the default since
+# 0.5.0) each of them gets a `ducklake-init` INIT CONTAINER, in its own image,
+# that runs GOAT's idempotent `python -m goatlib.storage.ducklake_init`
+# before the service starts: it creates the catalog on a fresh install and is
+# a no-op against an existing one. (Before 0.5.0 this key switched a
+# post-install hook Job, off by default; the hook is gone — it deadlocked a
+# single `helm install --wait`.)
 #
-# When enabled, the hook reads Postgres credentials from the same secret
-# the rest of the chart uses (resolved via `goat.postgresql.*` helpers)
-# and S3 credentials from `s3.existingSecret` (with `access_key` /
-# `secret_key` keys, overridable).
+# The init container gets the same ConfigMap, Postgres credentials,
+# `<component>.extraEnv` and data mount as its service, so it needs nothing
+# configured here beyond the two locations below. Set `enabled: false` only
+# when you manage the DuckLake catalog out-of-band.
 ducklakeBootstrap:
-  enabled: false
-  # Schema in the goat Postgres DB that DuckLake uses for its metadata.
+  enabled: true
+
+  # Emitted as DUCKLAKE_CATALOG_SCHEMA (the Postgres schema holding the
+  # DuckLake metadata) and DUCKLAKE_DATA_DIR (the DATA_PATH of the catalog's
+  # parquet files) into the geoapi and processes ConfigMaps, which both the
+  # services and their init containers read. `geoapi.config.*` /
+  # `processes.config.*` keys of the same name win. Defaults match GOAT's own
+  # (geoapi/processes config.py); the data dir sits on the shared `data`
+  # volume.
   catalogSchema: "ducklake"
-  # Local path the script creates + passes as DATA_PATH to the ATTACH.
-  # With S3 enabled below, parquet files go to S3; the local path is just
-  # the catalog/ATTACH marker (upstream compose convention).
   dataDir: "/app/data/ducklake"
-  s3:
-    # Empty endpoint = use local filesystem only (dev/test only — won't
-    # scale, geoapi readers won't find files unless they share the PVC).
-    # For real installs set this to e.g. `http://minio.my-ns:9000`.
-    endpoint: ""
-    bucket: ""           # informational; bootstrap script doesn't create it
-    useSSL: false
-    existingSecret: ""   # K8s Secret with access_key + secret_key keys
-    accessKeyIdKey: "access_key"
-    secretAccessKeyKey: "secret_key"
 
 # ─── Postgres ──────────────────────────────────────────────────────────────
+# Values under this key configure the cloudnative-pg dependency subchart
+# (the operator Deployment + RBAC). Its own CRDs are disabled here because
+# this chart vendors them directly under crds/ instead — see the note
+# above the `dependencies:` block in Chart.yaml for why.
+cloudnative-pg:
+  crds:
+    create: false
+
 postgresql:
   operator:
     enabled: true                  # bundled by default; set false to use a pre-existing CNPG operator or external Postgres
   cluster:
     enabled: true                  # CNPG Cluster CR created by THIS chart
     instances: 1
+    # CNPG's own default Postgres image does NOT include PostGIS, but this
+    # chart's postInitApplicationSQL unconditionally runs `CREATE EXTENSION
+    # postgis` against it — with the plain CNPG image that fails every time
+    # ("extension "postgis" is not available"), and the Cluster never
+    # leaves initdb (found running this chart's k3d smoke test against a
+    # genuinely fresh cluster). Point at an image that actually has it.
+    #
+    # GOAT's schema needs exactly PostGIS + uuid-ossp (see
+    # apps/core/alembic/versions/init.py in the main goat repo; uuid-ossp
+    # is stock contrib, self-installed by that migration, trusted since
+    # PG13, no superuser needed). It does NOT use pgRouting or
+    # postgis_topology anywhere (grep the whole goat repo for `pgrouting`
+    # or `pgr_`: zero hits) — an earlier version of this chart defaulted to
+    # a pgRouting-flavored image purely to obtain PostGIS, which was wrong:
+    # it dragged in a whole routing extension GOAT never uses, and its
+    # `postgres` user's UID/GID (999/999, upstream docker-library/postgres
+    # convention) needed overriding away from CNPG's own default (26/26),
+    # for no reason tied to anything this chart actually needs.
+    #
+    # `ghcr.io/cloudnative-pg/postgis` is CNPG's own official PostGIS
+    # image — Postgres 18 / PostGIS 3.6 in this tag — and is what P4B's own
+    # production CNPG cluster already runs
+    # (infra/argocd/apps/cloudnative-pg/templates/cluster.yaml), with no
+    # postgresUID/postgresGID override, confirmed working end-to-end by
+    # this chart's own k3d smoke test too. Override for your own
+    # CNPG-compatible PostGIS image (must match a Postgres major version
+    # your CNPG operator supports); "" falls back to the operator's own
+    # default image (broken for this chart's bundled-Postgres path, kept
+    # only for advanced overrides).
+    image: "ghcr.io/cloudnative-pg/postgis:18-3.6-system-trixie"
+    # Escape hatch for operators overriding `image` above with a custom
+    # PostGIS build whose `postgres` user isn't CNPG's own default UID/GID
+    # (26/26). Inert (rendered only `{{- with }}`) unless set — the default
+    # CNPG PostGIS image above needs neither. See the long comment above.
+    # postgresUID: 999
+    # postgresGID: 999
     storage:
       size: 20Gi
       storageClass: ""             # falls back to global.storageClass
+
     backup:
       enabled: false
   external:
@@ -745,3 +1010,10 @@ redis:
   master:
     persistence:
       enabled: false               # cache; no PV needed
+  # Used when `enabled: false` — point the chart at a Redis you already run.
+  external:
+    host: ""
+    port: 6379
+    database: 0
+    existingSecret: ""             # omit for an unauthenticated Redis
+    existingSecretPasswordKey: password

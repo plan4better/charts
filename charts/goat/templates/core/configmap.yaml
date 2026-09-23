@@ -9,8 +9,10 @@ metadata:
     {{- include "goat.serviceLabels" (dict "context" . "component" "core") | nindent 4 }}
 data:
   {{- range $k, $v := .Values.core.config }}
-  {{- /* Omit Keycloak placeholders when auth is wired via existingSecret */}}
-  {{- if and $authWired (or (eq $k "KEYCLOAK_SERVER_URL") (eq $k "REALM_NAME")) -}}
+  {{- /* Omit Keycloak placeholders when auth is wired via existingSecret, and
+         GOAT_PROCESSES_URL (emitted by the auto-wire below so it isn't
+         rendered twice when an operator sets it explicitly) */}}
+  {{- if or (and $authWired (or (eq $k "KEYCLOAK_SERVER_URL") (eq $k "REALM_NAME"))) (eq $k "GOAT_PROCESSES_URL") -}}
   {{- /* skip */ -}}
   {{- else }}
   {{ $k }}: {{ $v | quote }}
@@ -21,5 +23,9 @@ data:
   POSTGRES_PORT: {{ include "goat.postgresql.port" $ | quote }}
   {{- if not $authWired }}
   AUTH: {{ .Values.core.auth.enabled | toString | quote }}
+  {{- end }}
+  {{- $processesUrl := .Values.core.config.GOAT_PROCESSES_URL | default (include "goat.processes.url" .) }}
+  {{- if $processesUrl }}
+  GOAT_PROCESSES_URL: {{ $processesUrl | quote }}
   {{- end }}
 {{- end }}

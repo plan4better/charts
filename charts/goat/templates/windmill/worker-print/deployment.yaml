@@ -39,6 +39,10 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if include "goat.windmillDbInit.enabled" . }}
+      initContainers:
+        {{- include "goat.windmillDbInit.container" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: windmill-worker-print
           image: {{ include "goat.image" (dict "image" $worker.image "global" .Values.global "root" $) }}

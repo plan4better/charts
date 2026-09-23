@@ -19,4 +19,27 @@ data:
   {{- if not $authWired }}
   AUTH: {{ .Values.web.auth.enabled | toString | quote }}
   {{- end }}
+  {{- $api := .Values.web.publicUrls.api | default (include "goat.ingressUrl" (dict "ingress" .Values.core.ingress)) }}
+  {{- if $api }}
+  NEXT_PUBLIC_API_URL: {{ $api | quote }}
+  {{- end }}
+  {{- $geoapi := .Values.web.publicUrls.geoapi | default (include "goat.ingressUrl" (dict "ingress" .Values.geoapi.ingress)) }}
+  {{- if $geoapi }}
+  NEXT_PUBLIC_GEOAPI_URL: {{ $geoapi | quote }}
+  {{- end }}
+  {{- $processes := .Values.web.publicUrls.processes | default (include "goat.ingressUrl" (dict "ingress" .Values.processes.ingress)) }}
+  {{- if $processes }}
+  NEXT_PUBLIC_PROCESSES_URL: {{ $processes | quote }}
+  {{- end }}
+  {{- $catalogBase := include "goat.ingressUrl" (dict "ingress" .Values.catalog.ingress) }}
+  {{- $catalog := .Values.web.publicUrls.catalog | default (ternary (printf "%s/stac" $catalogBase) "" (ne $catalogBase "")) }}
+  {{- if $catalog }}
+  NEXT_PUBLIC_CATALOG_URL: {{ $catalog | quote }}
+  {{- end }}
+  {{- with .Values.web.websiteUrl }}
+  NEXT_PUBLIC_WEBSITE_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.web.statusFeedUrl }}
+  NEXT_PUBLIC_STATUS_FEED_URL: {{ . | quote }}
+  {{- end }}
 {{- end }}

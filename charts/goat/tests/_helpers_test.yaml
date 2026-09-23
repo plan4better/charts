@@ -19,7 +19,7 @@ tests:
           value: RELEASE-NAME
       - matchRegex:
           path: metadata.labels["app.kubernetes.io/version"]
-          pattern: '^(latest|[0-9]+\.[0-9]+\.[0-9]+)'
+          pattern: '^(latest|v?[0-9]+\.[0-9]+\.[0-9]+)'
       - equal:
           path: metadata.labels["app.kubernetes.io/managed-by"]
           value: Helm
@@ -49,7 +49,7 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[0].image
-          pattern: '^ghcr\.io/plan4better/goat/core:(latest|[0-9]+\.[0-9]+\.[0-9]+)'
+          pattern: '^ghcr\.io/plan4better/goat/core:(latest|v?[0-9]+\.[0-9]+\.[0-9]+)'
 
   - it: goat.image honors explicit core.image.tag
     set:
@@ -77,3 +77,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: "harbor.internal/plan4better/goat/core:2.5.0"
+
+  - it: default image tag follows appVersion v3.0.2
+    template: core/deployment.yaml
+    set:
+      core.enabled: true
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/plan4better/goat/core:v3.0.2

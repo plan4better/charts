@@ -29,6 +29,33 @@
         }
       }
     },
+    "data": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "existingClaim": {
+          "type": "string"
+        },
+        "accessMode": {
+          "type": "string",
+          "enum": [
+            "ReadWriteOnce",
+            "ReadWriteMany"
+          ]
+        },
+        "size": {
+          "type": "string"
+        },
+        "storageClassName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled"
+      ]
+    },
     "core": {
       "type": "object",
       "properties": {
@@ -168,6 +195,15 @@
             },
             "storage": {
               "type": "object"
+            },
+            "image": {
+              "type": "string"
+            },
+            "postgresUID": {
+              "type": "integer"
+            },
+            "postgresGID": {
+              "type": "integer"
             }
           }
         },
@@ -244,6 +280,15 @@
         },
         "config": {
           "type": "object"
+        },
+        "publicUrls": {
+          "type": "object"
+        },
+        "websiteUrl": {
+          "type": "string"
+        },
+        "statusFeedUrl": {
+          "type": "string"
         },
         "extraEnv": {
           "type": "array"
@@ -505,11 +550,92 @@
         "enabled"
       ]
     },
+    "catalog": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": {
+          "type": "object"
+        },
+        "config": {
+          "type": "object"
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKeys": {
+              "type": "object",
+              "properties": {
+                "serverUrl": {
+                  "type": "string"
+                },
+                "realm": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "s3": {
+          "type": "object",
+          "properties": {
+            "bucket": {
+              "type": "string"
+            },
+            "endpointUrl": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "accessKeyIdKey": {
+              "type": "string"
+            },
+            "secretAccessKeyKey": {
+              "type": "string"
+            }
+          }
+        },
+        "extraEnv": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        },
+        "service": {
+          "type": "object"
+        },
+        "ingress": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "enabled"
+      ]
+    },
     "redis": {
       "type": "object",
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "external": {
+          "type": "object"
         }
       }
     },
@@ -865,8 +991,34 @@
                   ]
                 }
               }
+            },
+            "legacyPersistence": {
+              "type": "object",
+              "description": "Upgrade guard for the 0.4.x per-worker PVCs. See values.yaml.",
+              "properties": {
+                "acknowledgeDeletion": {
+                  "type": "boolean",
+                  "description": "true lets `helm upgrade` delete unprotected 0.4.x windmill-{tools,workflows}-data claims (and their data) instead of failing."
+                }
+              }
             }
           }
+        }
+      }
+    },
+    "ducklakeBootstrap": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "catalogSchema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataDir": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }
