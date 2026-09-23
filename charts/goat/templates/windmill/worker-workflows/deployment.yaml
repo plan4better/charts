@@ -39,6 +39,10 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if include "goat.windmillDbInit.enabled" . }}
+      initContainers:
+        {{- include "goat.windmillDbInit.container" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: windmill-worker-workflows
           image: {{ include "goat.image" (dict "image" $worker.image "global" .Values.global "root" $) }}
@@ -71,20 +75,28 @@ spec:
             {{- with $worker.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- if $worker.persistence.enabled }}
+          {{- if or .Values.data.enabled $worker.persistence.enabled }}
           volumeMounts:
-            - name: geodata
+            {{- if .Values.data.enabled }}
+            {{- include "goat.data.mounts.full" . | nindent 12 }}
+            {{- else }}
+            - name: data
               mountPath: /app/data
+            {{- end }}
           {{- end }}
           {{- with $worker.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if $worker.persistence.enabled }}
+      {{- if or .Values.data.enabled $worker.persistence.enabled }}
       volumes:
-        - name: geodata
+        {{- if .Values.data.enabled }}
+        {{- include "goat.data.volume" . | nindent 8 }}
+        {{- else }}
+        - name: data
           persistentVolumeClaim:
             claimName: {{ $worker.persistence.existingClaim | default (printf "%s-windmill-workflows-data" (include "goat.fullname" .)) }}
+        {{- end }}
       {{- end }}
       {{- with $worker.nodeSelector }}
       nodeSelector:

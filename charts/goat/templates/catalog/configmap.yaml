@@ -1,0 +1,24 @@
+{{- if .Values.catalog.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "goat.serviceFullname" (dict "context" . "component" "catalog") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "catalog") | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.catalog.config }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  CATALOG_GOAT_UI_BASE_URL: {{ include "goat.web.publicUrl" . | quote }}
+  {{- if and .Values.catalog.auth.enabled .Values.catalog.auth.existingSecret }}
+  {{- /* Keycloak comes from the Secret in the deployment; nothing here. */}}
+  {{- else }}
+  KEYCLOAK_SERVER_URL: {{ .Values.core.config.KEYCLOAK_SERVER_URL | quote }}
+  {{- end }}
+  {{- if .Values.catalog.s3.bucket }}
+  CATALOG_S3_BUCKET: {{ .Values.catalog.s3.bucket | quote }}
+  CATALOG_S3_ENDPOINT_URL: {{ .Values.catalog.s3.endpointUrl | quote }}
+  CATALOG_S3_REGION: {{ .Values.catalog.s3.region | quote }}
+  {{- end }}
+{{- end }}

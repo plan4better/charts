@@ -38,6 +38,10 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.ducklakeBootstrap.enabled }}
+      initContainers:
+        {{- include "goat.ducklakeInit.container" (dict "context" $ "component" $component "values" .Values.processes) | nindent 8 }}
+      {{- end }}
       containers:
         - name: processes
           image: {{ include "goat.image" (dict "image" .Values.processes.image "global" .Values.global "root" $) }}
@@ -106,13 +110,23 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.processes.extraVolumeMounts }}
+          {{- if or .Values.data.enabled .Values.processes.extraVolumeMounts }}
           volumeMounts:
+            {{- if .Values.data.enabled }}
+            {{- include "goat.data.mounts.full" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.processes.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
-      {{- with .Values.processes.extraVolumes }}
+      {{- if or .Values.data.enabled .Values.processes.extraVolumes }}
       volumes:
+        {{- if .Values.data.enabled }}
+        {{- include "goat.data.volume" . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.processes.extraVolumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       {{- with .Values.processes.nodeSelector }}
       nodeSelector:

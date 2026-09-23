@@ -127,3 +127,44 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: KEYCLOAK_CLIENT_SECRET
+
+  - it: mounts the catalog mirror and geoip database read-only
+    template: core/deployment.yaml
+    set:
+      core.enabled: true
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: goat-data
+      - equal:
+          path: spec.template.spec.volumes[0].persistentVolumeClaim.claimName
+          value: RELEASE-NAME-goat-data
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /app/data/catalog
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].subPath
+          value: catalog
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].readOnly
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1].mountPath
+          value: /app/data/geoip
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1].readOnly
+          value: true
+  - it: mounts nothing when the data volume is disabled
+    template: core/deployment.yaml
+    set:
+      core.enabled: true
+      data.enabled: false
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - notExists:
+          path: spec.template.spec.volumes
+      - notExists:
+          path: spec.template.spec.containers[0].volumeMounts

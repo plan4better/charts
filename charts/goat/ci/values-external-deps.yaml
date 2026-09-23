@@ -1,6 +1,6 @@
 # CI fixture: external dependencies profile.
 # - Postgres provisioned outside the chart (consumer-provided Service + Secret)
-# - Bundled Redis (light dep; consumers can override or disable as needed)
+# - External Redis (consumer-provided cache, same shape as external Postgres)
 # - Windmill default-off (consumer brings its own workflow engine, or doesn't need one)
 # - Caddy off (consumer fronts the chart with their own gateway / Ingress)
 # - Ingress disabled (assumes an API gateway or external Ingress fronts the API)
@@ -41,4 +41,16 @@ postgresql:
     sslMode: prefer
 
 redis:
+  enabled: false
+  external:
+    host: cache.example.com
+    port: 6379
+    database: 0
+    existingSecret: redis-credentials
+
+catalog:
   enabled: true
+
+data:
+  enabled: true
+  existingClaim: my-preprovisioned-nfs-claim

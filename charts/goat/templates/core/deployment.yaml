@@ -107,6 +107,24 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if or .Values.data.enabled .Values.core.extraVolumeMounts }}
+          volumeMounts:
+            {{- if .Values.data.enabled }}
+            {{- include "goat.data.mounts.core" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.core.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.data.enabled .Values.core.extraVolumes }}
+      volumes:
+        {{- if .Values.data.enabled }}
+        {{- include "goat.data.volume" . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.core.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
       {{- with .Values.core.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

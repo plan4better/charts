@@ -31,3 +31,39 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: points core at the in-chart processes service
+    template: core/configmap.yaml
+    set:
+      core.enabled: true
+      processes.enabled: true
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - equal:
+          path: data.GOAT_PROCESSES_URL
+          value: http://RELEASE-NAME-goat-processes
+      - notExists:
+          path: data.GOAT_GEOAPI_HOST
+  - it: omits the processes URL when processes is disabled
+    template: core/configmap.yaml
+    set:
+      core.enabled: true
+      processes.enabled: false
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - notExists:
+          path: data.GOAT_PROCESSES_URL
+  - it: an explicit override wins over the auto-wire
+    template: core/configmap.yaml
+    set:
+      core.enabled: true
+      processes.enabled: true
+      core.config.GOAT_PROCESSES_URL: http://my-processes:8300
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - equal:
+          path: data.GOAT_PROCESSES_URL
+          value: http://my-processes:8300

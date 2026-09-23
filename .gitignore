@@ -12,3 +12,6 @@ charts/*/Chart.lock
 
 # Local renders
 /tmp/
+
+# Local SDD working notes (specs/plans) — not shipped in the repo
+/docs/

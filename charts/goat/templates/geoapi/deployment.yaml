@@ -38,6 +38,10 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.ducklakeBootstrap.enabled }}
+      initContainers:
+        {{- include "goat.ducklakeInit.container" (dict "context" $ "component" $component "values" .Values.geoapi) | nindent 8 }}
+      {{- end }}
       containers:
         - name: geoapi
           image: {{ include "goat.image" (dict "image" .Values.geoapi.image "global" .Values.global "root" $) }}
@@ -64,6 +68,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "goat.postgresql.secretName" . }}
                   key: {{ include "goat.postgresql.passwordKey" . }}
+            {{- if include "goat.redis.authEnabled" . }}
+            # Must precede REDIS_URL: $(VAR) only resolves against earlier entries.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.redis.secretName" . }}
+                  key: {{ include "goat.redis.passwordKey" . }}
+            {{- end }}
+            - name: REDIS_URL
+              value: {{ include "goat.redis.url" . | quote }}
             {{- with .Values.geoapi.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -81,13 +95,23 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.geoapi.extraVolumeMounts }}
+          {{- if or .Values.data.enabled .Values.geoapi.extraVolumeMounts }}
           volumeMounts:
+            {{- if .Values.data.enabled }}
+            {{- include "goat.data.mounts.full" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.geoapi.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
-      {{- with .Values.geoapi.extraVolumes }}
+      {{- if or .Values.data.enabled .Values.geoapi.extraVolumes }}
       volumes:
+        {{- if .Values.data.enabled }}
+        {{- include "goat.data.volume" . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.geoapi.extraVolumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       {{- with .Values.geoapi.nodeSelector }}
       nodeSelector:

@@ -69,3 +69,30 @@ postgresql:
 
 redis:
   enabled: true
+
+catalog:
+  enabled: true
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: catalog.goat.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: goat-catalog-tls
+        hosts: [catalog.goat.example.com]
+  s3:
+    bucket: goat-catalog
+    endpointUrl: https://s3.example.com
+    existingSecret: catalog-s3-credentials
+
+data:
+  enabled: true
+  accessMode: ReadWriteMany
+  size: 500Gi
+
+web:
+  websiteUrl: https://www.example.com
+  statusFeedUrl: https://status.example.com/goat.json
